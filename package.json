@@ -1,0 +1,25 @@
+{
+  "name": "isaiahbullard-api",
+  "version": "1.0.0",
+  "description": "The API for Isaiah Bullard's Website and other application that retrieve data from his database.",
+  "main": "app.js",
+  "scripts": {
+    "test": "npm run test",
+    "start": "node app.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaiah0812/isaiahbullard-api.git"
+  },
+  "author": "Isaiah Bullard",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/isaiah0812/isaiahbullard-api/issues"
+  },
+  "homepage": "https://github.com/isaiah0812/isaiahbullard-api#readme",
+  "dependencies": {
+    "dotenv": "^8.2.0",
+    "express": "^4.17.1",
+    "mongodb": "^3.6.6"
+  }
+}
