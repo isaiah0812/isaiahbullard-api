@@ -5,6 +5,7 @@ const app = express()
 const cors = require('cors')
 const { v4: uuid } = require('uuid')
 const { Client, Environment } = require('square')
+const request = require('request')
 const port = 8080
 
 const squareClient = new Client({
@@ -94,12 +95,13 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                   })
 
                 // Customers
-                app.route('/customers/:auth0Id')
+                app.route('/customers/:email')
                   .get((req, res) => {
-                    customers.findOne({auth0Id: req.params.auth0Id}, (error, result) => {
+                    customers.findOne({email: req.params.email}, (error, result) => {
                       if (error) throw error
 
-                      console.info(`Customer with email ${result.email} just logged in`)
+                      console.info(`Getting Customer with email ${result.email}`)
+                      console.info(result)
 
                       res.json(result)
                     })
@@ -119,7 +121,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                     })
 
                     customers.updateOne(
-                      {auth0Id: req.params.auth0Id}, 
+                      {email: req.params.email}, 
                       { $set: { 
                         firstName: firstName,
                         lastName: lastName,
@@ -159,9 +161,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                       shippingAddress,
                       email,
                       billingAddress,
-                      saveCustomer,
                       cardholderName,
-                      auth0Id
                     } = req.body
   
                     const {
@@ -196,175 +196,302 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                           uid: item.merchId
                         })
                       }
-                      
-                      console.info(`Creating Order for user with email ${email}`)
-                      ordersApi.createOrder({
-                        idempotencyKey: uuid(),
-                        order: {
-                          locationId: process.env.SQUARE_LOC_ID,
-                          lineItems: lineItems,
-                          customerId: customer ? customer.id : undefined
+
+                      const body = {
+                        shipment: {
+                          validate_address: "validate_and_clean",
+                          carrier_id: "se-637975",
+                          service_code: "usps_first_class_mail",
+                          ship_to: {
+                            name: `${firstName} ${lastName}`,
+                            address_line1: shippingLine1,
+                            address_line2: shippingLine2,
+                            address_line3: shippingLine3,
+                            city_locality: shippingCity,
+                            state_province: shippingState,
+                            postal_code: shippingPostalCode,
+                            country_code: "US",
+                          },
+                          ship_from: {
+                            name: "Isaiah Bullard",
+                            phone: "5122419507",
+                            address_line1: "903 SE Brick Ave",
+                            address_line2: "Apt. 205",
+                            city_locality: "Bentonville",
+                            state_province: "AR",
+                            postal_code: "72712",
+                            country_code: "US",
+                          },
+                          packages: [
+                            {
+                              weight: {
+                                value: 0.317,
+                                unit: "ounce"
+                              }
+                            }
+                          ]
                         }
-                      }).then((orderFulfilled) => orderFulfilled.result.order).then((order) => {
-                        console.info(`Order created: ${JSON.stringify(order, (key, value) => 
-                          typeof value === 'bigint'
-                            ? value.toString()
-                            : value, 2
-                        )}`)
-  
-                        const orderId = order.id
-                        console.info(`Creating Payment for Order with id ${orderId}`)
-                        paymentsApi.createPayment({
-                          sourceId: card ? card.id : token,
-                          idempotencyKey: uuid(),
-                          amountMoney: {
-                            amount: order.totalMoney.amount,
-                            currency: "USD",
-                          },
-                          shippingAddress: {
-                            firstName: firstName,
-                            lastName: lastName,
-                            addressLine1: shippingLine1,
-                            addressLine2: shippingLine2,
-                            addressLine3: shippingLine3,
-                            locality: shippingCity,
-                            administrativeDistrictLevel1: shippingState,
-                            postalCode: shippingPostalCode,
-                            country: 'US'
-                          },
-                          billingAddress: {
-                            firstName: firstName,
-                            lastName: lastName,
-                            addressLine1: billingLine1,
-                            addressLine2: billingLine2,
-                            addressLine3: billingLine3,
-                            locality: billingCity,
-                            administrativeDistrictLevel1: billingState,
-                            postalCode: billingPostalCode,
-                            country: 'US'
-                          },
-                          buyerEmailAddress: email,
-                          orderId: orderId,
-                          customerId: customer ? customer.id : undefined,
-                        }).then(paymentFulfilled => paymentFulfilled.result.payment).then((payment) => {
-                          console.info(`Payment Created: ${JSON.stringify(payment, (key, value) =>
-                            typeof value === 'bigint'
-                              ? value.toString()
-                              : value, 2
-                          )}`)
-  
-                          let response = {
-                            receiptUrl: payment.receiptUrl,
-                            customer: customer ? {
-                              squareId: customer.id,
-                              email: customer.emailAddress,
-                              firstName: customer.givenName,
-                              lastName: customer.familyName
-                            } : {}
+                      }
+
+                      request("https://api.shipengine.com/v1/rates", {
+                        method: 'POST',
+                        headers: {
+                          "Host": "api.shipengine.com",
+                          "API-Key": process.env.SHIPENGINE_KEY,
+                          "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(body)
+                      }, (error, response) => {
+                        if (error) throw new Error(error)
+
+                        // console.log(JSON.stringify(JSON.parse(response.body), null, 2))
+
+                        if(Array.isArray(JSON.parse(response.body).rate_response.rates)) {
+                          const rates = JSON.parse(response.body).rate_response.rates
+    
+                          const trackableRates = rates.filter((rate) => rate.trackable === true)
+                          let lowestRate = trackableRates[0]
+                          for(let rate of trackableRates) {
+                            if(rate.shipping_amount.amount < lowestRate.shipping_amount.amount) {
+                              lowestRate = rate
+                            }
                           }
 
-                          if(saveCustomer) {
-                            console.info(`Saving customer to zaetabase`)
-                            const newCustomer = {
-                              firstName: firstName,
-                              lastName: lastName,
-                              email: email,
-                              squareId: customer.id,
-                              orders: [orderId],
-                              cart: [],
-                              auth0Id: auth0Id.substring(auth0Id.indexOf("|") + 1)
-                            }
+                          const shippingRate = lowestRate.shipping_amount.amount
 
-                            customers.insertOne(newCustomer, (err, result) => {
-                              if(err) throw err
-                              
-                              console.info(`Customer created in DB: ${JSON.stringify(result, (key, value) => 
+                          lineItems.push({
+                            quantity: "1",
+                            basePriceMoney: {
+                              amount: shippingRate * 100,
+                              currency: 'USD'
+                            },
+                            name: "Shipping",
+                            uid: 'shipping'
+                          })
+                          
+                          console.info(`Creating Order for user with email ${email}`)
+                          ordersApi.createOrder({
+                            idempotencyKey: uuid(),
+                            order: {
+                              locationId: process.env.SQUARE_LOC_ID,
+                              lineItems: lineItems,
+                              customerId: customer ? customer.id : undefined,
+                              metadata: {
+                                rate_id: lowestRate.rate_id
+                              }
+                            }
+                          }).then((orderFulfilled) => orderFulfilled.result.order).then((order) => {
+                            console.info(`Order created: ${JSON.stringify(order, (key, value) => 
+                              typeof value === 'bigint'
+                                ? value.toString()
+                                : value, 2
+                            )}`)
+      
+                            const orderId = order.id
+                            console.info(`Creating Payment for Order with id ${orderId}`)
+                            paymentsApi.createPayment({
+                              sourceId: card ? card.id : token,
+                              idempotencyKey: uuid(),
+                              amountMoney: {
+                                amount: order.totalMoney.amount,
+                                currency: "USD",
+                              },
+                              shippingAddress: {
+                                firstName: firstName,
+                                lastName: lastName,
+                                addressLine1: shippingLine1,
+                                addressLine2: shippingLine2,
+                                addressLine3: shippingLine3,
+                                locality: shippingCity,
+                                administrativeDistrictLevel1: shippingState,
+                                postalCode: shippingPostalCode,
+                                country: 'US'
+                              },
+                              billingAddress: {
+                                firstName: firstName,
+                                lastName: lastName,
+                                addressLine1: billingLine1,
+                                addressLine2: billingLine2,
+                                addressLine3: billingLine3,
+                                locality: billingCity,
+                                administrativeDistrictLevel1: billingState,
+                                postalCode: billingPostalCode,
+                                country: 'US'
+                              },
+                              buyerEmailAddress: email,
+                              orderId: orderId,
+                              customerId: customer ? customer.id : undefined,
+                            }).then(paymentFulfilled => paymentFulfilled.result.payment).then((payment) => {
+                              console.info(`Payment Created: ${JSON.stringify(payment, (key, value) =>
                                 typeof value === 'bigint'
                                   ? value.toString()
                                   : value, 2
-                              )}\n`)
-                              response.customer.id = result.insertedId
-                              response.customer.auth0Id = result.ops[0].auth0Id
-
-                              console.info(`Sending order response: ${JSON.stringify(response, null, 2)}`)
-                              res.json(response)
+                              )}`)
+      
+                              let response = {
+                                customer: customer ? {
+                                  squareId: customer.id,
+                                  email: customer.emailAddress,
+                                  firstName: customer.givenName,
+                                  lastName: customer.familyName
+                                } : {},
+                                totalCost: Number.parseInt(payment.totalMoney.amount.toString())/100,
+                                shippingRate: shippingRate
+                              }
+                              
+                              console.info(`Saving customer to zaetabase`)
+                              const newCustomer = {
+                                firstName: firstName,
+                                lastName: lastName,
+                                email: email,
+                                squareId: customer.id,
+                                orders: [orderId],
+                                cart: [],
+                                address: {
+                                  line1: shippingLine1,
+                                  line2: shippingLine2,
+                                  line3: shippingLine3,
+                                  city: shippingCity,
+                                  state: shippingState,
+                                  postalCode: shippingPostalCode
+                                }
+                              }
+    
+                              customers.insertOne(newCustomer, (err, result) => {
+                                if(err) throw err
+                                
+                                console.info(`Customer created in DB: ${JSON.stringify(result, (key, value) => 
+                                  typeof value === 'bigint'
+                                    ? value.toString()
+                                    : value, 2
+                                )}\n`)
+                                response.customer.id = result.insertedId
+    
+                                console.info(`Sending order response: ${JSON.stringify(response, null, 2)}`)
+                                res.json(response)
+                              })
+    
+                            }).catch((paymentRejected) => {
+                              console.error(paymentRejected)
+      
+                              res.status(400).json({
+                                status: paymentRejected.statusCode,
+                                message: paymentRejected.errors[0].code
+                              })
                             })
-                          } else {
-                            console.info(`Sending order response: ${JSON.stringify(response, null, 2)}`)
-                            res.json(response)
-                          }
-
-                        }).catch((paymentRejected) => {
-                          console.error(paymentRejected)
-  
-                          res.status(400).json({
-                            status: paymentRejected.statusCode,
-                            message: paymentRejected.errors[0].code
+                          }).catch((orderRejected) => {
+                            console.error(orderRejected)
+      
+                            res.status(400).json({
+                              status: orderRejected.statusCode,
+                              message: orderRejected.errors[0].code
+                            })
                           })
-                        })
-                      }).catch((orderRejected) => {
-                        console.error(orderRejected)
-  
-                        res.status(400).json({
-                          status: orderRejected.statusCode,
-                          message: orderRejected.errors[0].code
-                        })
+                        } else {
+                          res.status(400).json(JSON.parse(response.body))
+                        }
+
                       })
                     }
   
-                    if (saveCustomer) {
-                      console.info(`Creating a new customer for ${firstName} ${lastName} with email ${email}`)
-                      customersApi.createCustomer({
-                        idempotencyKey: uuid(),
-                        givenName: firstName,
-                        familyName: lastName,
-                        emailAddress: email,
-                        address: {
+                    console.info(`Creating a new customer for ${firstName} ${lastName} with email ${email}`)
+                    customersApi.createCustomer({
+                      idempotencyKey: uuid(),
+                      givenName: firstName,
+                      familyName: lastName,
+                      emailAddress: email,
+                      address: {
+                        firstName: firstName,
+                        lastName: lastName,
+                        addressLine1: shippingLine1,
+                        addressLine2: shippingLine2,
+                        addressLine3: shippingLine3,
+                        locality: shippingCity,
+                        administrativeDistrictLevel1: shippingState,
+                        postalCode: shippingPostalCode
+                      }
+                    })
+                    .then(customerFulfilled => customerFulfilled.result.customer)
+                    .then(customer => {
+                      console.info(`Customer created in Square: ${JSON.stringify(customer, (key, value) => 
+                        typeof value === 'bigint'
+                          ? value.toString()
+                          : value, 2
+                      )}`)
+                      customersApi.createCustomerCard(customer.id, {
+                        cardNonce: token,
+                        billingAddress: {
                           firstName: firstName,
                           lastName: lastName,
-                          addressLine1: shippingLine1,
-                          addressLine2: shippingLine2,
-                          addressLine3: shippingLine3,
-                          locality: shippingCity,
-                          administrativeDistrictLevel1: shippingState,
-                          postalCode: shippingPostalCode
-                        }
-                      })
-                      .then(customerFulfilled => customerFulfilled.result.customer)
-                      .then(customer => {
-                        console.info(`Customer created in Square: ${JSON.stringify(customer, (key, value) => 
+                          addressLine1: billingLine1,
+                          addressLine2: billingLine2,
+                          addressLine3: billingLine3,
+                          locality: billingCity,
+                          administrativeDistrictLevel1: billingState,
+                          postalCode: billingPostalCode,
+                          country: 'US'
+                        },
+                        cardholderName: cardholderName
+                      }).then(cardFulfilled => cardFulfilled.result.card).then(card => {
+                        console.info(`Customer card created: ${JSON.stringify(card , (key, value) => 
                           typeof value === 'bigint'
                             ? value.toString()
                             : value, 2
                         )}`)
-                        customersApi.createCustomerCard(customer.id, {
-                          cardNonce: token,
-                          billingAddress: {
-                            firstName: firstName,
-                            lastName: lastName,
-                            addressLine1: billingLine1,
-                            addressLine2: billingLine2,
-                            addressLine3: billingLine3,
-                            locality: billingCity,
-                            administrativeDistrictLevel1: billingState,
-                            postalCode: billingPostalCode,
-                            country: 'US'
-                          },
-                          cardholderName: cardholderName
-                        }).then(cardFulfilled => cardFulfilled.result.card).then(card => {
-                          console.info(`Customer card created: ${JSON.stringify(card , (key, value) => 
-                            typeof value === 'bigint'
-                              ? value.toString()
-                              : value, 2
-                          )}`)
 
-                          processOrder(customer, card)
-                        })
-                        .catch(cardRejected => console.error(cardRejected))
-                      }).catch(customerRejected => console.error(customerRejected))
-                    } else {
-                      processOrder(null, null)
+                        processOrder(customer, card)
+                      }).catch(cardRejected => console.error(cardRejected))
+                    }).catch(customerRejected => console.error(customerRejected))
+                  })
+
+                app.route('/orders/rates/estimate')
+                  .post((req, res) => {
+                    const { postalCode, weight } = req.body
+
+                    const ship_date = new Date().toISOString()
+
+                    const body = {
+                      from_country_code: "US",
+                      from_postal_code: "72712",
+                      to_country_code: "US",
+                      to_postal_code: postalCode,
+                      weight: weight,
+                      ship_date: ship_date,
+                      carrier_ids: ["se-637975"]
                     }
+
+                    request("https://api.shipengine.com/v1/rates/estimate", {
+                      method: "POST",
+                      headers: {
+                        "Host": "api.shipengine.com",
+                        "API-Key": process.env.SHIPENGINE_KEY,
+                        "Content-Type": "application/json"
+                      },
+                      body: JSON.stringify(body)
+                    }, (error, response) => {
+                      if (error) throw new Error(error)
+
+                      if(Array.isArray(JSON.parse(response.body))) {
+                        const rates = JSON.parse(response.body)
+  
+                        const trackableRates = rates.filter((rate) => rate.trackable === true && rate.service_code === "usps_first_class_mail")
+                        let lowestRate = trackableRates[0]
+                        for(let rate of trackableRates) {
+                          if(rate.shipping_amount.amount < lowestRate.shipping_amount.amount) {
+                            lowestRate = rate
+                          }
+                        }
+
+                        console.log(`Estimated rate for ${postalCode}: $${lowestRate.shipping_amount.amount}`)
+  
+                        res.status(200).json({
+                          rate: lowestRate.shipping_amount.amount,
+                        })
+                      }
+                      else {
+                        res.status(400).json(JSON.parse(response.body))
+                      }
+                    })
                   })
                 
                 // Projects
