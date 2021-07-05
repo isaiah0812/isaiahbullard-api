@@ -93,47 +93,6 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                       res.json(result)
                     })
                   })
-
-                // Customers
-                app.route('/customers/:email')
-                  .get((req, res) => {
-                    customers.findOne({email: req.params.email}, (error, result) => {
-                      if (error) throw error
-
-                      console.info(`Getting Customer with email ${result.email}`)
-                      console.info(result)
-
-                      res.json(result)
-                    })
-                  })
-                  .put((req, res) => {
-                    const { firstName, lastName, email, squareId, cart } = req.body
-                    const { customersApi } = squareClient
-
-                    customersApi.updateCustomer(squareId, {
-                      givenName: firstName,
-                      familyName: lastName,
-                      emailAddress: email
-                    }).then(customer => {
-                      console.info(`Customer with email ${email} updated in Square`)
-                    }).catch(customerError => {
-                      console.error(customerError)
-                    })
-
-                    customers.updateOne(
-                      {email: req.params.email}, 
-                      { $set: { 
-                        firstName: firstName,
-                        lastName: lastName,
-                        email: email,
-                        cart: cart
-                      }},
-                      (error, result) => {
-                        if (error) throw error
-
-                        res.json(result)
-                      })
-                  })
   
                 // Merchandise
                 app.route('/merch')
@@ -182,218 +141,6 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                       postalCode: billingPostalCode
                     } = billingAddress
   
-                    function processOrder(customer, card) {
-                      // Mapping cart to line items
-                      let lineItems = []
-                      for (let item of cart) {
-                        lineItems.push({
-                          quantity: item.quantity.toString(),
-                          basePriceMoney: {
-                            amount: (item.price / item.quantity) * 100,
-                            currency: 'USD'
-                          },
-                          name: item.name,
-                          uid: item.merchId
-                        })
-                      }
-
-                      const body = {
-                        shipment: {
-                          validate_address: "validate_and_clean",
-                          carrier_id: "se-637975",
-                          service_code: "usps_first_class_mail",
-                          ship_to: {
-                            name: `${firstName} ${lastName}`,
-                            address_line1: shippingLine1,
-                            address_line2: shippingLine2,
-                            address_line3: shippingLine3,
-                            city_locality: shippingCity,
-                            state_province: shippingState,
-                            postal_code: shippingPostalCode,
-                            country_code: "US",
-                          },
-                          ship_from: {
-                            name: "Isaiah Bullard",
-                            phone: "5122419507",
-                            address_line1: "903 SE Brick Ave",
-                            address_line2: "Apt. 205",
-                            city_locality: "Bentonville",
-                            state_province: "AR",
-                            postal_code: "72712",
-                            country_code: "US",
-                          },
-                          packages: [
-                            {
-                              weight: {
-                                value: 0.317,
-                                unit: "ounce"
-                              }
-                            }
-                          ]
-                        }
-                      }
-
-                      request("https://api.shipengine.com/v1/rates", {
-                        method: 'POST',
-                        headers: {
-                          "Host": "api.shipengine.com",
-                          "API-Key": process.env.SHIPENGINE_KEY,
-                          "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify(body)
-                      }, (error, response) => {
-                        if (error) throw new Error(error)
-
-                        // console.log(JSON.stringify(JSON.parse(response.body), null, 2))
-
-                        if(Array.isArray(JSON.parse(response.body).rate_response.rates)) {
-                          const rates = JSON.parse(response.body).rate_response.rates
-    
-                          const trackableRates = rates.filter((rate) => rate.trackable === true)
-                          let lowestRate = trackableRates[0]
-                          for(let rate of trackableRates) {
-                            if(rate.shipping_amount.amount < lowestRate.shipping_amount.amount) {
-                              lowestRate = rate
-                            }
-                          }
-
-                          const shippingRate = lowestRate.shipping_amount.amount
-
-                          lineItems.push({
-                            quantity: "1",
-                            basePriceMoney: {
-                              amount: shippingRate * 100,
-                              currency: 'USD'
-                            },
-                            name: "Shipping",
-                            uid: 'shipping'
-                          })
-                          
-                          console.info(`Creating Order for user with email ${email}`)
-                          ordersApi.createOrder({
-                            idempotencyKey: uuid(),
-                            order: {
-                              locationId: process.env.SQUARE_LOC_ID,
-                              lineItems: lineItems,
-                              customerId: customer ? customer.id : undefined,
-                              metadata: {
-                                rate_id: lowestRate.rate_id
-                              }
-                            }
-                          }).then((orderFulfilled) => orderFulfilled.result.order).then((order) => {
-                            console.info(`Order created: ${JSON.stringify(order, (key, value) => 
-                              typeof value === 'bigint'
-                                ? value.toString()
-                                : value, 2
-                            )}`)
-      
-                            const orderId = order.id
-                            console.info(`Creating Payment for Order with id ${orderId}`)
-                            paymentsApi.createPayment({
-                              sourceId: card ? card.id : token,
-                              idempotencyKey: uuid(),
-                              amountMoney: {
-                                amount: order.totalMoney.amount,
-                                currency: "USD",
-                              },
-                              shippingAddress: {
-                                firstName: firstName,
-                                lastName: lastName,
-                                addressLine1: shippingLine1,
-                                addressLine2: shippingLine2,
-                                addressLine3: shippingLine3,
-                                locality: shippingCity,
-                                administrativeDistrictLevel1: shippingState,
-                                postalCode: shippingPostalCode,
-                                country: 'US'
-                              },
-                              billingAddress: {
-                                firstName: firstName,
-                                lastName: lastName,
-                                addressLine1: billingLine1,
-                                addressLine2: billingLine2,
-                                addressLine3: billingLine3,
-                                locality: billingCity,
-                                administrativeDistrictLevel1: billingState,
-                                postalCode: billingPostalCode,
-                                country: 'US'
-                              },
-                              buyerEmailAddress: email,
-                              orderId: orderId,
-                              customerId: customer ? customer.id : undefined,
-                            }).then(paymentFulfilled => paymentFulfilled.result.payment).then((payment) => {
-                              console.info(`Payment Created: ${JSON.stringify(payment, (key, value) =>
-                                typeof value === 'bigint'
-                                  ? value.toString()
-                                  : value, 2
-                              )}`)
-      
-                              let response = {
-                                customer: customer ? {
-                                  squareId: customer.id,
-                                  email: customer.emailAddress,
-                                  firstName: customer.givenName,
-                                  lastName: customer.familyName
-                                } : {},
-                                totalCost: Number.parseInt(payment.totalMoney.amount.toString())/100,
-                                shippingRate: shippingRate
-                              }
-                              
-                              console.info(`Saving customer to zaetabase`)
-                              const newCustomer = {
-                                firstName: firstName,
-                                lastName: lastName,
-                                email: email,
-                                squareId: customer.id,
-                                orders: [orderId],
-                                cart: [],
-                                address: {
-                                  line1: shippingLine1,
-                                  line2: shippingLine2,
-                                  line3: shippingLine3,
-                                  city: shippingCity,
-                                  state: shippingState,
-                                  postalCode: shippingPostalCode
-                                }
-                              }
-    
-                              customers.insertOne(newCustomer, (err, result) => {
-                                if(err) throw err
-                                
-                                console.info(`Customer created in DB: ${JSON.stringify(result, (key, value) => 
-                                  typeof value === 'bigint'
-                                    ? value.toString()
-                                    : value, 2
-                                )}\n`)
-                                response.customer.id = result.insertedId
-    
-                                console.info(`Sending order response: ${JSON.stringify(response, null, 2)}`)
-                                res.json(response)
-                              })
-    
-                            }).catch((paymentRejected) => {
-                              console.error(paymentRejected)
-      
-                              res.status(400).json({
-                                status: paymentRejected.statusCode,
-                                message: paymentRejected.errors[0].code
-                              })
-                            })
-                          }).catch((orderRejected) => {
-                            console.error(orderRejected)
-      
-                            res.status(400).json({
-                              status: orderRejected.statusCode,
-                              message: orderRejected.errors[0].code
-                            })
-                          })
-                        } else {
-                          res.status(400).json(JSON.parse(response.body))
-                        }
-
-                      })
-                    }
-  
                     console.info(`Creating a new customer for ${firstName} ${lastName} with email ${email}`)
                     customersApi.createCustomer({
                       idempotencyKey: uuid(),
@@ -439,9 +186,304 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                             : value, 2
                         )}`)
 
-                        processOrder(customer, card)
+                        // Mapping cart to line items
+                        let lineItems = []
+                        for (let item of cart) {
+                          lineItems.push({
+                            quantity: item.quantity.toString(),
+                            basePriceMoney: {
+                              amount: (item.price / item.quantity) * 100,
+                              currency: 'USD'
+                            },
+                            name: item.name,
+                            uid: item.merchId
+                          })
+                        }
+
+                        const body = {
+                          shipment: {
+                            validate_address: "validate_and_clean",
+                            carrier_id: "se-637975",
+                            service_code: "usps_first_class_mail",
+                            ship_to: {
+                              name: `${firstName} ${lastName}`,
+                              address_line1: shippingLine1,
+                              address_line2: shippingLine2,
+                              address_line3: shippingLine3,
+                              city_locality: shippingCity,
+                              state_province: shippingState,
+                              postal_code: shippingPostalCode,
+                              country_code: "US",
+                            },
+                            ship_from: {
+                              name: "Isaiah Bullard",
+                              phone: "5122419507",
+                              address_line1: "903 SE Brick Ave",
+                              address_line2: "Apt. 205",
+                              city_locality: "Bentonville",
+                              state_province: "AR",
+                              postal_code: "72712",
+                              country_code: "US",
+                            },
+                            packages: [
+                              {
+                                weight: {
+                                  value: 0.317,
+                                  unit: "ounce"
+                                }
+                              }
+                            ]
+                          }
+                        }
+
+                        request("https://api.shipengine.com/v1/rates", {
+                          method: 'POST',
+                          headers: {
+                            "Host": "api.shipengine.com",
+                            "API-Key": process.env.SHIPENGINE_KEY,
+                            "Content-Type": "application/json"
+                          },
+                          body: JSON.stringify(body)
+                        }, (error, response) => {
+                          if (error) throw new Error(error)
+
+                          if(Array.isArray(JSON.parse(response.body).rate_response.rates)) {
+                            const rates = JSON.parse(response.body).rate_response.rates
+      
+                            const trackableRates = rates.filter((rate) => rate.trackable === true)
+                            let lowestRate = trackableRates[0]
+                            for(let rate of trackableRates) {
+                              if(rate.shipping_amount.amount < lowestRate.shipping_amount.amount) {
+                                lowestRate = rate
+                              }
+                            }
+
+                            const shippingRate = lowestRate.shipping_amount.amount
+
+                            lineItems.push({
+                              quantity: "1",
+                              basePriceMoney: {
+                                amount: shippingRate * 100,
+                                currency: 'USD'
+                              },
+                              name: "Shipping",
+                              uid: 'shipping'
+                            })
+                            
+                            console.info(`Creating Order for user with email ${email}`)
+                            ordersApi.createOrder({
+                              idempotencyKey: uuid(),
+                              order: {
+                                locationId: process.env.SQUARE_LOC_ID,
+                                lineItems: lineItems,
+                                customerId: customer ? customer.id : undefined,
+                                metadata: {
+                                  rate_id: lowestRate.rate_id,
+                                  shippingLine1,
+                                  shippingLine2: shippingLine2 ? shippingLine2 : " ",
+                                  shippingLine3: shippingLine3 ? shippingLine3 : " ",
+                                  shippingCity,
+                                  shippingState,
+                                  shippingPostalCode
+                                }
+                              }
+                            }).then((orderFulfilled) => orderFulfilled.result.order).then((order) => {
+                              console.info(`Order created: ${JSON.stringify(order, (key, value) => 
+                                typeof value === 'bigint'
+                                  ? value.toString()
+                                  : value, 2
+                              )}`)
+        
+                              const orderId = order.id
+                              console.info(`Creating Payment for Order with id ${orderId}`)
+                              paymentsApi.createPayment({
+                                sourceId: card ? card.id : token,
+                                idempotencyKey: uuid(),
+                                amountMoney: {
+                                  amount: order.totalMoney.amount,
+                                  currency: "USD",
+                                },
+                                shippingAddress: {
+                                  firstName: firstName,
+                                  lastName: lastName,
+                                  addressLine1: shippingLine1,
+                                  addressLine2: shippingLine2,
+                                  addressLine3: shippingLine3,
+                                  locality: shippingCity,
+                                  administrativeDistrictLevel1: shippingState,
+                                  postalCode: shippingPostalCode,
+                                  country: 'US'
+                                },
+                                billingAddress: {
+                                  firstName: firstName,
+                                  lastName: lastName,
+                                  addressLine1: billingLine1,
+                                  addressLine2: billingLine2,
+                                  addressLine3: billingLine3,
+                                  locality: billingCity,
+                                  administrativeDistrictLevel1: billingState,
+                                  postalCode: billingPostalCode,
+                                  country: 'US'
+                                },
+                                buyerEmailAddress: email,
+                                orderId: orderId,
+                                customerId: customer ? customer.id : undefined,
+                                autocomplete: false
+                              }).then(paymentFulfilled => paymentFulfilled.result.payment).then((payment) => {
+                                console.info(`Payment Created: ${JSON.stringify(payment, (key, value) =>
+                                  typeof value === 'bigint'
+                                    ? value.toString()
+                                    : value, 2
+                                )}`)
+        
+                                let response = {
+                                  customer: customer ? {
+                                    id: customer.id,
+                                    email: customer.emailAddress,
+                                    firstName: customer.givenName,
+                                    lastName: customer.familyName,
+                                  } : {},
+                                  totalCost: Number.parseInt(payment.totalMoney.amount.toString())/100,
+                                  shippingRate: shippingRate,
+                                  orderId: order.id,
+                                }
+
+                                console.info(`Sending order response: ${JSON.stringify(response, null, 2)}`)
+                                res.json(response)
+                                
+                              }).catch((paymentRejected) => {
+                                console.error(paymentRejected)
+        
+                                res.status(400).json({
+                                  status: paymentRejected.statusCode,
+                                  message: paymentRejected.errors[0].code
+                                })
+                              })
+                            }).catch((orderRejected) => {
+                              console.error(orderRejected)
+        
+                              res.status(400).json({
+                                status: orderRejected.statusCode,
+                                message: orderRejected.errors[0].code
+                              })
+                            })
+                          } else {
+                            res.status(400).json(JSON.parse(response.body))
+                          }
+                        })
                       }).catch(cardRejected => console.error(cardRejected))
                     }).catch(customerRejected => console.error(customerRejected))
+                  })
+                  .get((req, res) => {
+                    console.info(`Getting all orders`)
+
+                    const { ordersApi } = squareClient
+
+                    ordersApi.searchOrders({
+                      returnEntries: false,
+                      locationIds: [process.env.SQUARE_LOC_ID]
+                    }).then(ordersFulfilled => ordersFulfilled.result.orders).then(orders => {
+                      console.info(`${orders.length} orders retrieved`)
+                      let result = []
+                      for(let order of orders) {
+
+                        let items = []
+                        let shippingCost = 0
+                        for(let item of order.lineItems) {
+                          if(item.uid !== 'shipping') {
+                            items.push({
+                              id: item.uid,
+                              name: item.name,
+                              quantity: item.quantity,
+                              itemPrice: Number.parseFloat(item.basePriceMoney.amount.toString()) / 100,
+                              totalPrice: Number.parseFloat(item.totalMoney.amount.toString()) / 100
+                            })
+                          } else {
+                            shippingCost = Number.parseFloat(item.totalMoney.amount.toString()) / 100
+                          }
+                        }
+
+                        let payments = []
+                        if(order.tenders) {
+                          for(let tender of order.tenders) {
+                            payments.push(tender.paymentId)
+                          }
+                        }
+
+                        result.push({
+                          id: order.id,
+                          customerId: order.customerId,
+                          items: items,
+                          shippingCost: shippingCost,
+                          orderCost: Number.parseFloat(order.totalMoney.amount.toString()) / 100,
+                          paymentIds: payments,
+                          orderStatus: order.state,
+                          shippingAddress: order.metadata && order.metadata.shippingLine1 ? {
+                            line1: order.metadata.shippingLine1,
+                            line2: order.metadata.shippingLine2 !== ' ' ? order.metadata.shippingLine2 : undefined,
+                            line3: order.metadata.shippingLine3 !== ' ' ? order.metadata.shippingLine3 : undefined,
+                            city: order.metadata.shippingCity,
+                            state: order.metadata.shippingState,
+                            postalCode: order.metadata.shippingPostalCode
+                          } : undefined
+                        })
+                      }
+
+                      res.json(result)
+                    }).catch(ordersRejected => console.error(ordersRejected))
+                  })
+
+                app.route('/orders/complete')
+                  .post((req, res) => {
+                    const { ordersApi, paymentsApi } = squareClient
+
+                    ordersApi.searchOrders({
+                      locationIds: [process.env.SQUARE_LOC_ID],
+                      returnEntries: false,
+                      query: {
+                        filter: {
+                          stateFilter: {
+                            states: ["OPEN"]
+                          }
+                        }
+                      }
+                    }).then(ordersFulfilled => ordersFulfilled.result.orders).then(orders => {
+                      res.json(JSON.parse(JSON.stringify(orders, (key, value) => 
+                        typeof value === 'bigint'
+                          ? value.toString()
+                          : value, 2)))
+                    })
+                  })
+
+                app.route('/orders/:orderId/complete')
+                  .post((req, res) => {
+                    const { ordersApi, paymentsApi } = squareClient
+
+                    ordersApi.retrieveOrder(req.params.orderId)
+                      .then(orderFulfilled => orderFulfilled.result.order).then(order => {
+                        for(let payment of order.tenders) {
+                          paymentsApi.completePayment(payment.paymentId)
+                            .then(paymentFulfilled => paymentFulfilled.result.payment).then(payment => {
+                              const body = {
+                                validate_address: "validate_and_clean"
+                              }
+
+                              request(`https://api.shipengine.com/v1/labels/rates/${order.metadata.rate_id}`, {
+                                method: 'POST',
+                                headers: {
+                                  "Host": "api.shipengine.com",
+                                  "API-Key": process.env.SHIPENGINE_KEY,
+                                  "Content-Type": "application/json"
+                                },
+                                body: JSON.stringify(body)
+                              }, (error, response) => {
+                                if (error) throw new Error(error)
+
+                                res.json(JSON.parse(response.body))
+                              })
+                            })
+                        }
+                      }).catch(orderRejected => console.error(orderRejected))
                   })
 
                 app.route('/orders/rates/estimate')
