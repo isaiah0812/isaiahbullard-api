@@ -93,7 +93,8 @@ const completeOrder = async (order) => {
           metadata: {
             ...order.metadata,
             shippingLabelId: label.label_id,
-            shipmentId: label.shipment_id
+            shipmentId: label.shipment_id,
+            shippingLabelUrl: label.label_download.href
           },
           version: order.version
         }
@@ -428,6 +429,9 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                   }).catch(customersError => console.info(customersError))
                 })
 
+              app.route('/health')
+                .get((req, res) => res.status(200).send())
+
               // Merchandise
               app.route('/merch')
                 .get((req, res) => {
@@ -486,7 +490,21 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                           ? merchItem.sizes.find(size => size.id === item.sizeId)
                           : undefined
   
-                        if((itemSize && itemSize.quantity < item.quantity) || merchItem.quantity < item.quantity) {
+                        if((itemSize && itemSize.quantity === 0) || merchItem.quantity === 0) {
+                          console.error(`${merchItem.name}${itemSize ? `(${itemSize.name})` : ``} is sold out.`)
+  
+                          throw {
+                            status: 400,
+                            message: `${merchItem.name}${itemSize ? `(${itemSize.name})` : ``} is sold out.`,
+                            data: {
+                              mechId: merchItem.id,
+                              name: `${merchItem.name}${itemSize ? `(${itemSize.name})` : ``}`,
+                              request: item.quantity,
+                              stock: 0
+                            },
+                            code: SOLD_OUT
+                          }
+                        } else if ((itemSize && itemSize.quantity < item.quantity) || merchItem.quantity < item.quantity) {
                           const itemQuantity = itemSize ? itemSize.quantity : merchItem.quantity
                           console.error(`${merchItem.name}${itemSize ? `(${itemSize.name})` : ``} has less in stock than the requested amount.\nRequested Amount: ${item.quantity}\nAmount In Stock: ${itemQuantity}`)
   
@@ -500,20 +518,6 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                               stock: itemQuantity
                             },
                             code: TOO_MANY
-                          }
-                        } else if ((itemSize && itemSize.quantity === 0) || merchItem.quantity === 0) {
-                          console.error(`${merchItem.name}${itemSize ? `(${itemSize.name})` : ``} is sold out.`)
-  
-                          throw {
-                            status: 400,
-                            message: `${merchItem.name}${itemSize ? `(${itemSize.name})` : ``} is sold out.`,
-                            data: {
-                              mechId: merchItem.id,
-                              name: `${merchItem.name}${itemSize ? `(${itemSize.name})` : ``}`,
-                              request: item.quantity,
-                              stock: 0
-                            },
-                            code: SOLD_OUT
                           }
                         } else {
                           const itemPrice = itemSize ? itemSize.price : merchItem.price
@@ -539,18 +543,6 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                           })
   
                           weight += (itemWeight * item.quantity)
-  
-                          if(itemSize) {
-                            await merch.updateOne({_id: merchItem._id, "sizes.id": itemSize.id}, {
-                              $inc: {
-                                "sizes.$.quantity": -1 * item.quantity
-                              }
-                            })
-                          } else {
-                            await merch.updateOne({_id: merchItem._id}, {
-                              $inc: { quantity: -1 * item.quantity }
-                            })
-                          }
                         }
                       } catch (merchFindError) {
                         if(merchFindError.code === SOLD_OUT || merchFindError.code === TOO_MANY) {
@@ -587,8 +579,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                         ship_from: {
                           name: "Isaiah Bullard",
                           phone: "5122419507",
-                          address_line1: "903 SE Brick Ave",
-                          address_line2: "Apt. 205",
+                          address_line1: "P.O. Box 1166",
                           city_locality: "Bentonville",
                           state_province: "AR",
                           postal_code: "72712",
@@ -703,6 +694,40 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                 
                         const payment = paymentResponse.result.payment
                         console.info(`Payment Created: ${printJSON(payment)}`)
+
+                        for (let item of cart) {
+                          try {
+                            const merchItem = await merch.findOne({id: item.merchId})
+      
+                            const itemSize = item.sizeId && merchItem.sizes
+                              ? merchItem.sizes.find(size => size.id === item.sizeId)
+                              : undefined
+      
+                            if(itemSize) {
+                              await merch.updateOne({_id: merchItem._id, "sizes.id": itemSize.id}, {
+                                $inc: {
+                                  "sizes.$.quantity": -1 * item.quantity
+                                }
+                              })
+                            } else {
+                              await merch.updateOne({_id: merchItem._id}, {
+                                $inc: { quantity: -1 * item.quantity }
+                              })
+                            }
+                          } catch (merchFindError) {
+                            console.error(`Merch item ${item.merchId} not found`)
+                            const exception = {
+                              status: 400,
+                              message: `Merch item ${item.merchId} not found`,
+                              data: merchFindError,
+                              code: NOT_FOUND
+                            }
+  
+                            throw exception
+                          }
+                        }
+  
+                        
                 
                         let response = {
                           customer: customer ? {
@@ -882,7 +907,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                                 accessToken: process.env.EMAILJS_TOKEN,
                                 template_params: {
                                   first_name: orderInfo.customer.firstName,
-                                  order: orderInfo.id,
+                                  order: orderInfo.orderId,
                                   email: orderInfo.customer.email
                                 }
                               }, {
@@ -966,7 +991,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                               accessToken: process.env.EMAILJS_TOKEN,
                               template_params: {
                                 first_name: orderInfo.customer.firstName,
-                                order: orderInfo.id,
+                                order: orderInfo.orderId,
                                 email: orderInfo.customer.email
                               }
                             }, {
@@ -1062,6 +1087,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                           postalCode: order.metadata.shippingPostalCode
                         } : undefined,
                         shippingLabelId: order.metadata && order.metadata.shippingLabelId ? order.metadata.shippingLabelId : undefined,
+                        shippingLabelUrl: order.metadata && order.metadata.shippingLabelUrl ? order.metadata.shippingLabelUrl : undefined,
                         createdDate: new Date(order.createdAt)
                       })
                     }
@@ -1162,17 +1188,10 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                           .catch(customerError => {
                             if (customerError.code === EMAILJS_ERROR) {
                               throw customerError
+                            } else {
+                              console.error(`Error retrieving customer ${order.customerId}`)
+                              console.error(printJSON(customerError))
                             }
-
-                            console.error(`Error retrieving customer ${order.customerId}`)
-                            const exception = {
-                              status: 400,
-                              message: `Error finding customer ${order.customerId}`,
-                              data: customerError.errors,
-                              code: CUSTOMERS_API_ERROR
-                            }
-
-                            throw exception
                           })
                       }
 
@@ -1446,6 +1465,108 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                       console.error(printJSON(exception))
                       res.status(exception.status).json(exception)
                     })
+                })
+
+              app.route('/orders/:orderId/label')
+                .get((req, res) => {
+                  const orderId = req.params.orderId
+                  const { ordersApi } = squareClient
+                  
+                  console.info(`Retrieving order ${orderId}`)
+                  ordersApi.retrieveOrder(orderId)
+                    .then(orderFound => orderFound.result.order).then(order => {
+                      if(!order) {
+                        console.error(`Order ${orderId} not found`)
+                        const exception = {
+                          status: 404,
+                          message: `Order ${orderId} not found`,
+                          data: {
+                            orderId: orderId
+                          },
+                          code: NOT_FOUND
+                        }
+
+                        console.error(printJSON(exception))
+                        res.status(exception.status).json(exception)
+                      } else {
+                        console.info(`Order ${order.id} found.`)
+                        if(order.metadata) {
+                          if(order.metadata.shippingLabelUrl) {
+                            res.status(200).json({
+                              id: order.id,
+                              url: order.metadata.shippingLabelUrl
+                            })
+                          } else if(order.metadata.shippingLabelId) {
+                            console.info(`Retrieving shipping label ${order.metadata.shippingLabelId} from ShipEngine`)
+                            const headers = {
+                              "Host": "api.shipengine.com",
+                              "API-Key": process.env.SHIPENGINE_KEY,
+                              "Content-Type": "application/json"
+                            }
+
+                            axios.get(`https://api.shipengine.com/v1/labels/${order.metadata.shippingLabelId}`, { headers: headers })
+                              .then(shippingLabelResult => {
+                                const label = shippingLabelResult.data
+
+                                console.info(`Received label ${label.label_id} for order ${order.id} - ${label.label_download.href}`)
+                                res.status(200).json({
+                                  id: order.id,
+                                  url: label.label_download.href
+                                })
+                              })
+                              .catch(shippingLabelError => {
+                                console.info(`Error retrieving shipping label for order ${order.id}`)
+                                const exception = {
+                                  status: 500,
+                                  message: `Error retrieving shipping label for order ${order.id}`,
+                                  data: shippingLabelError,
+                                  code: SHIPPING_LABEL_ERROR
+                                }
+
+                                console.error(printJSON(exception))
+                                res.status(exception.status).json(exception)
+                              })
+                          } else {
+                            console.warn(`Order does not have a shipping label.`)
+                            const exception = {
+                              status: 400,
+                              message: `Order ${order.id} does not have a shipping label`,
+                              data: {
+                                orderId: order.id,
+                              },
+                              code: NOT_FOUND
+                            }
+
+                            res.status(exception.status).json(exception)
+                          }
+                        } else {
+                          console.warn(`No label for order ${order.id}.`)
+                          const exception = {
+                            status: 404,
+                            message: `No label for order ${order.id} found`,
+                            data: {
+                              orderId: order.id,
+                            },
+                            code: NOT_FOUND
+                          }
+
+                          console.error(printJSON(exception))
+                          res.status(exception.status).json(exception)
+                        }
+                      }
+                    }).catch(findOrderError => {
+                      console.error(`Error finding order ${orderId}`)
+                      const exception = {
+                        status: 500,
+                        message: `Error finding order ${orderId}`,
+                        data: findOrderError,
+                        code: ORDERS_API_ERROR
+                      }
+
+                      console.info(printJSON(exception))
+                      res.status(exception.status).send(exception)
+                    })
+
                 })
 
               app.route('/orders/rates/estimate')
