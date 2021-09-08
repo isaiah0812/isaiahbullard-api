@@ -13,16 +13,17 @@ const logdna = require('@logdna/logger')
 const port = 8080
 const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 
+const carrierCode = process.env.NODE_ENV === 'LOCAL' || process.env.NODE_ENV === 'TEST' ? 'se-637975' : 'se-748344'
 const serviceCodes = ["usps_parcel_select", "usps_first_class_mail", "usps_priority_mail"]
 
 const logOptions = {
   app: process.env.APP_NAME,
   level: 'debug'
 }
-const logger = process.env.NODE_ENV === 'LOCAL' ? console : logdna.createLogger(process.env.LOGDNA_KEY, logOptions)
+const logger = process.env.NODE_ENV === 'LOCAL' || process.env.NODE_ENV === 'TEST' ? console : logdna.createLogger(process.env.LOGDNA_KEY, logOptions)
 
 const squareClient = new Client({
-  environment: process.env.NODE_ENV === 'LOCAL' ? Environment.Sandbox : Environment.Production,
+  environment: process.env.NODE_ENV === 'LOCAL' || process.env.NODE_ENV === 'TEST' ? Environment.Sandbox : Environment.Production,
   accessToken: process.env.SQUARE_ACCESS_TOKEN
 })
 
@@ -603,7 +604,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                         items: shippingLabelItems
                       },
                       rate_options: {
-                        carrier_ids: ['se-637975'],
+                        carrier_ids: [carrierCode],
                         service_codes: ['usps_first_class_mail', 'usps_parcel_select']
                       }
                     }
@@ -1613,7 +1614,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                     to_postal_code: postalCode,
                     weight: weight,
                     ship_date: ship_date,
-                    carrier_ids: ["se-637975"]
+                    carrier_ids: [carrierCode]
                   }
 
                   axios.post("https://api.shipengine.com/v1/rates/estimate", body, {
