@@ -8,9 +8,18 @@ const { Client, Environment } = require('square')
 const axios = require('axios')
 const { PDFDocument } = require('pdf-lib')
 const emailjs = require('emailjs-com')
+const logdna = require('@logdna/logger')
 
 const port = 8080
 const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+
+const serviceCodes = ["usps_parcel_select", "usps_first_class_mail", "usps_priority_mail"]
+
+const logOptions = {
+  app: process.env.APP_NAME,
+  level: 'debug'
+}
+const logger = process.env.NODE_ENV === 'LOCAL' ? console : logdna.createLogger(process.env.LOGDNA_KEY, logOptions)
 
 const squareClient = new Client({
   environment: Environment.Sandbox,
@@ -39,7 +48,7 @@ const printJSON = (jsonObject) => {
 
 const completeOrder = async (order) => {
   const { ordersApi, paymentsApi } = squareClient
-  console.info(`Completing order ${order.id}${order.customerId ? ` for customer with id ${order.customerId}` : ''}`)
+  logger.info(`Completing order ${order.id}${order.customerId ? ` for customer with id ${order.customerId}` : ''}`)
   let lineItems = []
   for(const lineItem of order.lineItems) {
     if(lineItem.uid !== 'shipping') {
@@ -62,7 +71,7 @@ const completeOrder = async (order) => {
   }
 
   if(order.metadata && order.metadata.rate_id && !order.metadata.shippingLabelId && !order.metadata.shipmentId) {
-    console.info(`Creating shipping label for order ${order.id}`)
+    logger.info(`Creating shipping label for order ${order.id}`)
     const body = {
       validate_address: "validate_and_clean"
     }
@@ -75,7 +84,7 @@ const completeOrder = async (order) => {
 
     try {
       const { data: label } = await axios.post(`https://api.shipengine.com/v1/labels/rates/${order.metadata.rate_id}`, body, { headers: headers })
-      console.info(`Label for order ${order.id}: ${label.label_download.href}`)
+      logger.info(`Label for order ${order.id}: ${label.label_download.href}`)
       completedOrder = {
         ...completedOrder,
         shippingLabelInfo: {
@@ -86,7 +95,7 @@ const completeOrder = async (order) => {
         }
       }
 
-      console.info(`Updating order ${order.id} with label ${label.label_id}`)
+      logger.info(`Updating order ${order.id} with label ${label.label_id}`)
       const orderPromise = await ordersApi.updateOrder(order.id, {
         order: {
           locationId: process.env.SQUARE_LOC_ID,
@@ -100,9 +109,9 @@ const completeOrder = async (order) => {
         }
       })
       const { order: updatedOrder } = orderPromise.result
-      console.info(`Order ${updatedOrder.id} updated with shipping label id ${updatedOrder.metadata.shippingLabelId}`)
+      logger.info(`Order ${updatedOrder.id} updated with shipping label id ${updatedOrder.metadata.shippingLabelId}`)
     } catch(e) {
-      console.error(`Error completing order ${order.id}`)
+      logger.error(`Error completing order ${order.id}`)
 
       let exception = {}
       if(e.errors) {
@@ -146,17 +155,17 @@ const completeOrder = async (order) => {
         }
       }
       
-      console.error(printJSON(exception))
+      logger.error(printJSON(exception))
       throw exception
     }
   } else {
-    console.warn(`No label being created for ${order.id}. Might be an old order or a test order.`)
+    logger.warn(`No label being created for ${order.id}. Might be an old order or a test order.`)
   }
 
   try {
     for(const tender of order.tenders) {
       if(tender.cardDetails.status === 'AUTHORIZED') {
-        console.info(`Completing payment ${tender.paymentId} for order ${order.id}`)
+        logger.info(`Completing payment ${tender.paymentId} for order ${order.id}`)
 
         const paymentPromise = await paymentsApi.completePayment(tender.paymentId)
         const { payment } = paymentPromise.result
@@ -178,7 +187,7 @@ const completeOrder = async (order) => {
       }
     }
   } catch(e) {
-    console.error(`Error completing payment ${tender.paymentId} for order ${order.id}`)
+    logger.error(`Error completing payment ${tender.paymentId} for order ${order.id}`)
     const exception = {
       status: 400,
       message: `Error completing payment ${tender.paymentId} from order ${order.id}`,
@@ -186,14 +195,14 @@ const completeOrder = async (order) => {
       code: PAYMENTS_API_ERROR
     }
 
-    console.error(exception)
+    logger.error(exception)
     throw exception
   }
 
   return completedOrder
 }
 
-console.info(`Connecting to MongoDB at ${url}`)
+logger.info(`Connecting to MongoDB at ${url}`)
 MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
   if(err) throw err
 
@@ -201,35 +210,35 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
   const db = client.db('ibdb')
 
   // Collection Set-up
-  console.info("Getting 'beats' collection...")
+  logger.info("Getting 'beats' collection...")
   db.collection('beats', (beatsError, beats) => {
     if(beatsError) throw beatsError
-    if(beats) console.info("'beats' collection retrieved")
+    if(beats) logger.info("'beats' collection retrieved")
 
-    console.info("Getting 'credits' collection...")
+    logger.info("Getting 'credits' collection...")
     db.collection('credits', (creditsError, credits) => {
       if(creditsError) throw creditsError
-      if(credits) console.info("'credits' collection retrieved")
+      if(credits) logger.info("'credits' collection retrieved")
 
-      console.info("Getting 'merch' collection...")
+      logger.info("Getting 'merch' collection...")
       db.collection('merch', (merchError, merch) => {
         if(merchError) throw merchError
-        if(merch) console.info("'merch' collection retrieved")
+        if(merch) logger.info("'merch' collection retrieved")
 
-        console.info("Getting 'projects' collection...")
+        logger.info("Getting 'projects' collection...")
         db.collection('projects', (projectsError, projects) => {
           if(projectsError) throw projectsError
-          if(projects) console.info("'projects' collection retrieved")
+          if(projects) logger.info("'projects' collection retrieved")
 
-          console.info("Getting 'singles' collection...")
+          logger.info("Getting 'singles' collection...")
           db.collection('singles', (singlesError, singles) => {
             if(singlesError) throw singlesError
-            if(singles) console.info("'singles' collection retrieved")
+            if(singles) logger.info("'singles' collection retrieved")
 
-            console.info("Getting 'videos' collection...")
+            logger.info("Getting 'videos' collection...")
             db.collection('videos', (videosError, videos) => {
               if(videosError) throw videosError
-              if(videos) console.info("'videos' collection retrieved")
+              if(videos) logger.info("'videos' collection retrieved")
 
               // Dead home path
               app.use('/', (req, res, next) => {
@@ -240,7 +249,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
               // Beats
               app.route('/beats')
                 .get((req, res) => {
-                  console.info(`Getting all beats for request from ${req.ip}`);
+                  logger.info(`Getting all beats for request from ${req.ip}`);
                   beats.find().toArray((error, result) => {
                     if(error) throw error
 
@@ -251,7 +260,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
               // Credits
               app.route('/credits')
                 .get((req, res) => {
-                  console.info(`Getting all credits for request from ${req.ip}`);
+                  logger.info(`Getting all credits for request from ${req.ip}`);
                   credits.find().toArray((error, result) => {
                     if(error) throw error
 
@@ -268,11 +277,11 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                     next()
                   } else {
                     const { customersApi } = squareClient
-                    console.info(`Getting customer ${customerId}`)
+                    logger.info(`Getting customer ${customerId}`)
   
                     customersApi.retrieveCustomer(customerId)
                       .then(customerFulfilled => customerFulfilled.result.customer).then(customer => {
-                        console.info(`Customer ${customerId} with email ${customer.emailAddress} retrieved`)
+                        logger.info(`Customer ${customerId} with email ${customer.emailAddress} retrieved`)
                         const customerRetVal = {
                           id: customer.id,
                           firstName: customer.givenName,
@@ -280,11 +289,11 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                           email: customer.emailAddress
                         }
   
-                        console.info(printJSON(customerRetVal))
+                        logger.info(printJSON(customerRetVal))
   
                         res.json(customerRetVal)
                       }).catch(customerError => {
-                        console.error(`Customer ${customerId} not found.`)
+                        logger.error(`Customer ${customerId} not found.`)
                         throw {
                           status: 404,
                           message: `Customer ${customerId} not found.`,
@@ -364,7 +373,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                     }
                     
                     res.json(JSON.parse(printJSON(response)))
-                  }).catch(orderError => console.error(orderError))
+                  }).catch(orderError => logger.error(orderError))
                 })
 
               app.route('/customers/email')
@@ -404,18 +413,18 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                         "Host": "api.emailjs.com"
                       }
                     }).then(emailFulfilled => {
-                      console.info(`${emailFulfilled.status} - Code ${code} sent to customer with email ${customer.emailAddress}`)
+                      logger.info(`${emailFulfilled.status} - Code ${code} sent to customer with email ${customer.emailAddress}`)
                       const response = {
                         id: customer.id,
                         firstName: customer.givenName,
                         lastName: customer.familyName,
                         email: customer.emailAddress
                       }
-                      console.info(`Customer Retrieved via email:\n${printJSON(response)}`)
+                      logger.info(`Customer Retrieved via email:\n${printJSON(response)}`)
   
                       res.json(response)
                     }).catch(emailError => {
-                      console.error(`Error emailing order confirmation email to customer with email ${customer.emailAddress}`)
+                      logger.error(`Error emailing order confirmation email to customer with email ${customer.emailAddress}`)
                       const exception = {
                         status: 500,
                         message: `Internal Server Error`,
@@ -423,10 +432,10 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                         code: EMAILJS_ERROR
                       }
 
-                      console.error(printJSON(exception))
+                      logger.error(printJSON(exception))
                       res.status(exception.status).json(exception)
                     })
-                  }).catch(customersError => console.info(customersError))
+                  }).catch(customersError => logger.info(customersError))
                 })
 
               app.route('/health')
@@ -435,7 +444,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
               // Merchandise
               app.route('/merch')
                 .get((req, res) => {
-                  console.info(`Getting all merch for request from ${req.ip}`);
+                  logger.info(`Getting all merch for request from ${req.ip}`);
                   merch.find().toArray((error, result) => {
                     if(error) throw error
 
@@ -481,7 +490,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                     let shippingLabelItems = []
                     let weight = 0
 
-                    console.info('Loading cart and calculating price and weight')
+                    logger.info('Loading cart and calculating price and weight')
                     for (let item of cart) {
                       try {
                         const merchItem = await merch.findOne({id: item.merchId})
@@ -491,14 +500,14 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                           : undefined
   
                         if((itemSize && itemSize.quantity === 0) || merchItem.quantity === 0) {
-                          console.error(`${merchItem.name}${itemSize ? `(${itemSize.name})` : ``} is sold out.`)
+                          logger.error(`${merchItem.name}${itemSize ? `(${itemSize.name})` : ``} is sold out.`)
   
                           throw {
                             status: 400,
-                            message: `${merchItem.name}${itemSize ? `(${itemSize.name})` : ``} is sold out.`,
+                            message: `${merchItem.name}${itemSize ? ` (${itemSize.name})` : ``} is sold out.`,
                             data: {
                               mechId: merchItem.id,
-                              name: `${merchItem.name}${itemSize ? `(${itemSize.name})` : ``}`,
+                              name: `${merchItem.name}${itemSize ? ` (${itemSize.name})` : ``}`,
                               request: item.quantity,
                               stock: 0
                             },
@@ -506,21 +515,21 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                           }
                         } else if ((itemSize && itemSize.quantity < item.quantity) || merchItem.quantity < item.quantity) {
                           const itemQuantity = itemSize ? itemSize.quantity : merchItem.quantity
-                          console.error(`${merchItem.name}${itemSize ? `(${itemSize.name})` : ``} has less in stock than the requested amount.\nRequested Amount: ${item.quantity}\nAmount In Stock: ${itemQuantity}`)
+                          logger.error(`${merchItem.name}${itemSize ? `(${itemSize.name})` : ``} has less in stock than the requested amount.\nRequested Amount: ${item.quantity}\nAmount In Stock: ${itemQuantity}`)
   
                           throw {
                             status: 400,
-                            message: `${merchItem.name}${itemSize ? `(${itemSize.name})` : ``} has less in stock than the requested amount.`,
+                            message: `${merchItem.name}${itemSize ? ` (${itemSize.name})` : ``} has less in stock than the requested amount.`,
                             data: {
                               mechId: merchItem.id,
-                              name: `${merchItem.name}${itemSize ? `(${itemSize.name})` : ``}`,
+                              name: `${merchItem.name}${itemSize ? ` (${itemSize.name})` : ``}`,
                               request: item.quantity,
                               stock: itemQuantity
                             },
                             code: TOO_MANY
                           }
                         } else {
-                          const itemPrice = itemSize ? itemSize.price : merchItem.price
+                          const itemPrice = itemSize && itemSize.price ? itemSize.price : merchItem.price
                           const itemWeight = itemSize ? itemSize.weight : merchItem.weight
   
                           lineItems.push({
@@ -548,7 +557,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                         if(merchFindError.code === SOLD_OUT || merchFindError.code === TOO_MANY) {
                           throw merchFindError
                         } else {
-                          console.error(`Merch item ${item.merchId} not found`)
+                          logger.error(`Merch item ${item.merchId} not found`)
                           const exception = {
                             status: 400,
                             message: `Merch item ${item.merchId} not found`,
@@ -564,8 +573,6 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                     const body = {
                       shipment: {
                         validate_address: "validate_and_clean",
-                        carrier_id: "se-637975",
-                        service_code: "usps_first_class_mail",
                         ship_to: {
                           name: `${firstName} ${lastName}`,
                           address_line1: shippingLine1,
@@ -594,6 +601,10 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                           }
                         ],
                         items: shippingLabelItems
+                      },
+                      rate_options: {
+                        carrier_ids: ['se-637975'],
+                        service_codes: ['usps_first_class_mail', 'usps_parcel_select']
                       }
                     }
                     
@@ -611,7 +622,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                       if(Array.isArray(shippingRateResponse.data.rate_response.rates)) {
                         const rates = shippingRateResponse.data.rate_response.rates
                   
-                        const trackableRates = rates.filter((rate) => rate.trackable === true)
+                        const trackableRates = rates.filter((rate) => rate.trackable === true && serviceCodes.includes(rate.service_code) && rate.package_type === "package")
                         let lowestRate = trackableRates[0]
                         for(let rate of trackableRates) {
                           if(rate.shipping_amount.amount < lowestRate.shipping_amount.amount) {
@@ -624,14 +635,14 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                         lineItems.push({
                           quantity: "1",
                           basePriceMoney: {
-                            amount: shippingRate * 100,
+                            amount: Math.ceil(shippingRate * 100),
                             currency: 'USD',
                           },
                           name: 'Shipping',
                           uid: 'shipping'
                         })
                   
-                        console.info(`Creating Order for user with email ${email}`)
+                        logger.info(`Creating Order for user with email ${email}`)
                         const orderResponse = await ordersApi.createOrder({
                           idempotencyKey: uuid(),
                           order: {
@@ -649,13 +660,13 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                             }
                           }
                         })
-                
+                                        
                         const order = orderResponse.result.order
-                        console.info(`Order created: ${printJSON(order)}`)
+                        logger.info(`Order created: ${printJSON(order)}`)
                 
                         orderId = order.id
                         orderVersion = order.version
-                        console.info(`Creating Payment for Order with id ${orderId}`)
+                        logger.info(`Creating Payment for Order with id ${orderId}`)
                 
                         const paymentResponse = await paymentsApi.createPayment({
                           sourceId: cardToken,
@@ -693,7 +704,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                         })
                 
                         const payment = paymentResponse.result.payment
-                        console.info(`Payment Created: ${printJSON(payment)}`)
+                        logger.info(`Payment Created: ${printJSON(payment)}`)
 
                         for (let item of cart) {
                           try {
@@ -715,7 +726,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                               })
                             }
                           } catch (merchFindError) {
-                            console.error(`Merch item ${item.merchId} not found`)
+                            logger.error(`Merch item ${item.merchId} not found`)
                             const exception = {
                               status: 400,
                               message: `Merch item ${item.merchId} not found`,
@@ -741,14 +752,14 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                           orderId: order.id,
                         }
                 
-                        console.info(`Sending order response: ${printJSON(response)}`)
+                        logger.info(`Sending order response: ${printJSON(response)}`)
                         return response
                       }
                     } catch (e) {
                       if (e.errors) {
                         if (orderId) {
-                          console.error(`Error in creating payment for order ${orderId} with email ${email}.`)
-                          console.error(printJSON(e.errors))
+                          logger.error(`Error in creating payment for order ${orderId} with email ${email}.`)
+                          logger.error(printJSON(e.errors))
                           const exception = {
                             status: 500,
                             message: `Server error creating payment for order ${orderId} with email ${email}.`,
@@ -756,7 +767,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                             code: PAYMENTS_API_ERROR
                           }
 
-                          console.error(printJSON(exception))
+                          logger.error(printJSON(exception))
                           res.status(exception.status).json(exception)
 
                           ordersApi.updateOrder(orderId, {
@@ -766,14 +777,14 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                               version: orderVersion
                             }
                           }).then(orderFulfilled => orderFulfilled.result.order).then(order => {
-                            console.info(`Removed order ${orderId} because of payment error`)
+                            logger.info(`Removed order ${orderId} because of payment error`)
                           }).catch(orderError => {
-                            console.error(`Error canceling order ${orderId} after payment failure.`)
-                            console.error(printJSON(orderError))
+                            logger.error(`Error canceling order ${orderId} after payment failure.`)
+                            logger.error(printJSON(orderError))
                           })
                         } else {
-                          console.error(`Error in creating order for customer with email ${email}.`)
-                          console.error(printJSON(e.errors))
+                          logger.error(`Error in creating order for customer with email ${email}.`)
+                          logger.error(printJSON(e.errors))
                           const exception = {
                             status: 500,
                             message: `Server error in creating order for customer with email ${email}.`,
@@ -784,7 +795,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                           throw exception
                         }
                       } else if(e.response) {
-                        console.error("Error in the ShipEngine API")
+                        logger.error("Error in the ShipEngine API")
                         if (e.response.status === 400 && e.response.data.errors[0].error_type === "validation") {
                           const exception = {
                             status: 400,
@@ -795,7 +806,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
 
                           throw exception
                         } else {
-                          console.error(e.response.data.errors)
+                          logger.error(e.response.data.errors)
                           throw {
                             status: 500,
                             message: `Error in the ShipEngine API`,
@@ -803,11 +814,13 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                             code: SHIPPING_RATE_ERROR
                           }
                         }
+                      } else if(e.code && e.code === NOT_FOUND) {
+                        throw e
                       }
                     }
                   }
 
-                  console.info(`New Order Request: ${printJSON(req.body)}`)
+                  logger.info(`New Order Request: ${printJSON(req.body)}`)
 
                   const { customersApi, cardsApi } = squareClient
 
@@ -839,7 +852,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                     postalCode: billingPostalCode
                   } = billingAddress
 
-                  console.info(`Retrieving customer with email ${email}`)
+                  logger.info(`Retrieving customer with email ${email}`)
                   customersApi.searchCustomers({
                     query: {
                       filter: {
@@ -852,7 +865,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                   .then(customersFulfilled => customersFulfilled.result.customers)
                   .then(customers => {
                     if(!customers || customers.length === 0) {
-                      console.info(`Creating a new customer for ${firstName} ${lastName} with email ${email}`)
+                      logger.info(`Creating a new customer for ${firstName} ${lastName} with email ${email}`)
                       customersApi.createCustomer({
                         idempotencyKey: uuid(),
                         givenName: firstName,
@@ -871,7 +884,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                       })
                       .then(customerFulfilled => customerFulfilled.result.customer)
                       .then(customer => {
-                        console.info(`Customer created in Square: ${printJSON(customer)}`)
+                        logger.info(`Customer created in Square: ${printJSON(customer)}`)
                         cardsApi.createCard({
                           sourceId: token,
                           idempotencyKey: uuid(),
@@ -891,15 +904,15 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                             customerId: customer.id,
                           }
                         }).then(cardFulfilled => cardFulfilled.result.card).then(card => {
-                          console.info(`Customer card created: ${printJSON(card)}`)
+                          logger.info(`Customer card created: ${printJSON(card)}`)
 
                           placeOrder(customer, card ? card.id : token, req.body)
                             .then(orderInfo => {
 
-                              console.info(`Sending order response: ${printJSON(orderInfo)}`)
-                              res.json(orderInfo)
+                              logger.info(`Sending order response: ${printJSON(orderInfo)}`)
+                              res.status(201).json(orderInfo)
 
-                              console.info(`Emailing confirmation to customer for order ${orderInfo.orderId} to email ${customer.emailAddress}`)
+                              logger.info(`Emailing confirmation to customer for order ${orderInfo.orderId} to email ${customer.emailAddress}`)
                               axios.post('https://api.emailjs.com/api/v1.0/email/send', {
                                 service_id: process.env.EMAILJS_SERVICE,
                                 template_id: process.env.EMAILJS_ORDER_TEMPLATE,
@@ -915,24 +928,24 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                                   "Content-Type": "application/json",
                                   "Host": "api.emailjs.com"
                                 }
-                              }).then(emailFulfilled => console.info(`${emailFulfilled.status} - Order confirmation email sent to customer with email ${customer.emailAddress}`))
+                              }).then(emailFulfilled => logger.info(`${emailFulfilled.status} - Order confirmation email sent to customer with email ${customer.emailAddress}`))
                               .catch(emailError => {
-                                console.error(`Error emailing order confirmation email to customer with email ${customer.emailAddress}`)
+                                logger.error(`Error emailing order confirmation email to customer with email ${customer.emailAddress}`)
                                 if (emailError.response) {
-                                  console.error(printJSON(emailError.response.data))
+                                  logger.error(printJSON(emailError.response.data))
                                 } else if (emailError.request) {
-                                  console.error(printJSON(emailError.request))
+                                  logger.error(printJSON(emailError.request))
                                 } else {
-                                  console.error(printJSON(emailError.message))
+                                  logger.error(printJSON(emailError.message))
                                 }
                               })
                             }).catch(orderCompletionError => {
-                              console.error(orderCompletionError)
+                              logger.error(orderCompletionError)
 
                               res.status(orderCompletionError.status).json(orderCompletionError)
                             })
                         }).catch(cardError => {
-                          console.error(`Error creating card for customer ${customer.id}`)
+                          logger.error(`Error creating card for customer ${customer.id}`)
                           const exception = {
                             status: 400,
                             message: `Error creating card for customer ${customer.id}`,
@@ -940,11 +953,11 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                             code: CARDS_API_ERROR
                           }
 
-                          console.error(printJSON(exception))
+                          logger.error(printJSON(exception))
                           res.status(exception.status).json(exception)
                         })
                       }).catch(customerError => {
-                        console.error(`Error creating customer with email ${email}`)
+                        logger.error(`Error creating customer with email ${email}`)
                         const exception = {
                           status: 400,
                           message: `Error creating customer with email ${email}`,
@@ -952,7 +965,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                           code: CUSTOMERS_API_ERROR
                         }
 
-                        console.error(printJSON(exception))
+                        logger.error(printJSON(exception))
                         res.status(exception.status).json(exception)
                       })
                     } else {
@@ -977,12 +990,12 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                           customerId: customer.id
                         }
                       }).then(cardFulfilled => cardFulfilled.result.card).then(card => {
-                        console.info(`Customer card created: ${printJSON(card)}`)
+                        logger.info(`Customer card created: ${printJSON(card)}`)
 
                         placeOrder(customer, card ? card.id : token, req.body)
                           .then(orderInfo => {
-                            console.info(`Emailing confirmation to customer for order ${orderInfo.orderId} to email ${customer.emailAddress}`)
-                            res.json(orderInfo)
+                            logger.info(`Emailing confirmation to customer for order ${orderInfo.orderId} to email ${customer.emailAddress}`)
+                            res.status(201).json(orderInfo)
 
                             axios.post('https://api.emailjs.com/api/v1.0/email/send', {
                               service_id: process.env.EMAILJS_SERVICE,
@@ -999,32 +1012,32 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                                 "Content-Type": "application/json",
                                 "Host": "api.emailjs.com"
                               }
-                            }).then(emailFulfilled => console.info(`${emailFulfilled.status} - Order confirmation email sent to customer with email ${customer.emailAddress}`))
+                            }).then(emailFulfilled => logger.info(`${emailFulfilled.status} - Order confirmation email sent to customer with email ${customer.emailAddress}`))
                             .catch(emailError => {
-                              console.error(`Error emailing order confirmation email to customer with email ${customer.emailAddress}`)
-                              console.error(emailError.toJSON())
+                              logger.error(`Error emailing order confirmation email to customer with email ${customer.emailAddress}`)
+                              logger.error(emailError.toJSON())
                             })
                           }).catch(orderError => {
-                            console.error(orderError)
+                            logger.error(orderError)
 
-                            res.status(orderError.status).json(orderError)
+                            res.status(orderError.status || orderError.status === 0 ? orderError.status : 500).json(orderError)
                           })
                       }).catch(cardError => {
-                        console.error(`Error creating card for customer ${customer.id}`)
+                        logger.error(`Error creating card for customer ${customer.id}`)
                         const exception = {
                           status: 400,
                           message: `Error creating card for customer ${customer.id}`,
                           data: cardError.errors,
-                          code: CUSTOMERS_API_ERROR
+                          code: CARDS_API_ERROR
                         }
 
-                        console.error(printJSON(exception))
+                        logger.error(printJSON(exception))
                         res.status(exception.status).json(exception)
                       })
                     }
                   }).catch(customerError => {
-                    console.error(`Error retrieving customer with email ${email}`)
-                    console.error(printJSON(customerError))
+                    logger.error(`Error retrieving customer with email ${email}`)
+                    logger.error(printJSON(customerError))
 
                     res.status(500).json({
                       status: 500,
@@ -1035,7 +1048,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                   })
                 })
                 .get((req, res) => {
-                  console.info(`Getting all orders`)
+                  logger.info(`Getting all orders`)
 
                   const { ordersApi } = squareClient
 
@@ -1043,7 +1056,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                     returnEntries: false,
                     locationIds: [process.env.SQUARE_LOC_ID]
                   }).then(ordersFulfilled => ordersFulfilled.result.orders).then(orders => {
-                    console.info(`${orders.length} orders retrieved`)
+                    logger.info(`${orders.length} orders retrieved`)
                     let result = []
                     for(let order of orders) {
 
@@ -1094,7 +1107,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
 
                     res.json(result)
                   }).catch(ordersError => {
-                    console.error(`Error retrieving all orders`)
+                    logger.error(`Error retrieving all orders`)
                     const exception = {
                       status: 500,
                       message: `Internal error retrieving all orders from Square.`,
@@ -1102,9 +1115,26 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                       code: ORDERS_API_ERROR
                     }
 
-                    console.error(printJSON(exception))
+                    logger.error(printJSON(exception))
                     res.status(exception.status).json(exception)
                   })
+                })
+
+              app.route('/orders/admin-auth')
+                .post((req, res) => {
+                  const user = req.body
+
+                  if(user.email === 'isaiah0812@yahoo.com'
+                      && user.nickname === 'isaiah0812'
+                      && user.email_verified === true) {
+                    const authTime = new Date()
+                    logger.info(`Authorized admin user from ${req.ip} at ${authTime.toISOString()}`)
+                    res.status(200).json({ authorized: true })
+                  } else {
+                    const authTime = new Date()
+                    logger.info(`Attempted login to admin user from ${req.ip} at ${authTime.toISOString()}`)
+                    res.status(200).json({ authorized: false })
+                  }
                 })
 
               app.route('/orders/complete')
@@ -1122,12 +1152,13 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                       }
                     }
                   }).then(ordersFulfilled => ordersFulfilled.result.orders.filter(order => order.tenders)).then(orders => {
-                    console.info(`${orders.length} open orders. Completing payments and creating shipping labels.`)
+                    logger.info(`${orders.length} open orders. Completing payments and creating shipping labels.`)
                     const completeOrders = async () => {
                       let completedOrders = []
                       for(let order of orders) {
+                        let completedOrder
                         try {
-                          const completedOrder = await completeOrder(order)
+                          completedOrder = await completeOrder(order)
                           completedOrders.push(completedOrder)
                         } catch (orderCompletionError) {
                           throw orderCompletionError
@@ -1135,7 +1166,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
 
                         customersApi.retrieveCustomer(order.customerId)
                           .then(customerFulfilled => customerFulfilled.result.customer).then(customer => {
-                              console.info(`Emailing customer for order ${order.id} to email ${customer.emailAddress}`)
+                              logger.info(`Emailing customer for order ${order.id} to email ${customer.emailAddress}`)
                               axios.post('https://api.emailjs.com/api/v1.0/email/send', {
                                 service_id: process.env.EMAILJS_SERVICE,
                                 template_id: process.env.EMAILJS_SHIPPING_TEMPLATE,
@@ -1153,9 +1184,9 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                                   "Content-Type": "application/json",
                                   "Host": "api.emailjs.com"
                                 }
-                              }).then(emailFulfilled => console.info(`${emailFulfilled.status} - Order completion email sent to customer with email ${customer.emailAddress}`))
+                              }).then(emailFulfilled => logger.info(`${emailFulfilled.status} - Order completion email sent to customer with email ${customer.emailAddress}`))
                               .catch(emailError => {
-                                console.error(`Error emailing order completion email to customer with email ${customer.emailAddress}`)
+                                logger.error(`Error emailing order completion email to customer with email ${customer.emailAddress}`)
                                 let exception = {}
                                 if (emailError.response) {
                                   if (emailError.resposne.status === 400) {
@@ -1189,8 +1220,8 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                             if (customerError.code === EMAILJS_ERROR) {
                               throw customerError
                             } else {
-                              console.error(`Error retrieving customer ${order.customerId}`)
-                              console.error(printJSON(customerError))
+                              logger.error(`Error retrieving customer ${order.customerId}`)
+                              logger.error(customerError)
                             }
                           })
                       }
@@ -1199,17 +1230,17 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                     }
 
                     completeOrders().then(completedOrders => {
-                      console.info(`Completed ${completedOrders.length} payments`)
-                      console.info(printJSON(completedOrders))
+                      logger.info(`Completed ${completedOrders.length} payments`)
+                      logger.info(printJSON(completedOrders))
 
                       res.json(completedOrders)
                     }).catch(orderCompletionError => {
-                      console.error(printJSON(orderCompletionError))
+                      logger.error(printJSON(orderCompletionError))
 
                       res.status(orderCompletionError.status).json(orderCompletionError)
                     })
                   }).catch(ordersError => {
-                    console.error(`Error retrieving open orders`)
+                    logger.error(`Error retrieving open orders`)
                     const exception = {
                       status: 500,
                       message: `Internal error retrieving open orders from Square.`,
@@ -1217,7 +1248,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                       code: ORDERS_API_ERROR
                     }
 
-                    console.error(printJSON(exception))
+                    logger.error(printJSON(exception))
                     res.status(exception.status).json(JSON.parse(printJSON(exception)))
                   })
                 })
@@ -1247,8 +1278,8 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                           
                           mergedPdf.addPage(labelPage)
                         } catch (e) {
-                          console.error(`Error getting shipping label with url ${url}`)
-                          console.error(e)
+                          logger.error(`Error getting shipping label with url ${url}`)
+                          logger.error(e)
                         }
                         
                       }
@@ -1258,7 +1289,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                       res.header('Content-Type', 'application/pdf')
                       res.send(Buffer.from(mergedPdfBuffer))
                     } catch(e) {
-                      console.error(`Error merging shipping labels`)
+                      logger.error(`Error merging shipping labels`)
                       const exception = {
                         status: 400,
                         message: `Error merging shipping labels`,
@@ -1268,7 +1299,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                         },
                         code: SERVER_ERROR
                       }
-                      console.error(printJSON(exception))
+                      logger.error(printJSON(exception))
 
                       res.status(exception.status).json(exception)
                     }
@@ -1285,7 +1316,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                   ordersApi.retrieveOrder(orderId)
                     .then(orderFound => orderFound.result.order).then(order => {
                       if(!order) {
-                        console.error(`Order ${orderId} not found`)
+                        logger.error(`Order ${orderId} not found`)
                         const exception = {
                           status: 404,
                           message: `Order ${orderId} not found`,
@@ -1295,13 +1326,13 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                           code: NOT_FOUND
                         }
 
-                        console.error(printJSON(exception))
+                        logger.error(printJSON(exception))
                         res.status(exception.status).json(exception)
                       } else {
-                        console.info(`Found order ${order.id}.`)
+                        logger.info(`Found order ${order.id}.`)
 
                         if (order.state === 'COMPLETED' || order.state === 'CANCELED') {
-                          console.error(`Order ${order.id} is in state ${order.state}, and cannot be updated.`)
+                          logger.error(`Order ${order.id} is in state ${order.state}, and cannot be updated.`)
                           const exception = {
                             status: 400,
                             message: `Order ${orderId} not found`,
@@ -1312,10 +1343,10 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                             code: BAD_REQUEST
                           }
 
-                          console.error(printJSON(exception))
+                          logger.error(printJSON(exception))
                           res.status(exception.status).json(exception)
                         } else {
-                          console.info(`Canceling order ${orderId}...`)
+                          logger.info(`Canceling order ${orderId}...`)
 
                           ordersApi.updateOrder(order.id, {
                             order: {
@@ -1325,7 +1356,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                             }
                           }).then(canceledResult => canceledResult.result.order).then(canceledOrder => {
                             if(!canceledOrder) {
-                              console.error(`Error canceling order. Might need to be done manually.`)
+                              logger.error(`Error canceling order. Might need to be done manually.`)
                               const exception = {
                                 status: 500,
                                 message: `Error canceling order. Might need to be done manually.`,
@@ -1335,24 +1366,24 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                                 code: SERVER_ERROR
                               }
 
-                              console.error(printJSON(exception))
+                              logger.error(printJSON(exception))
                               res.status(exception.status).json(exception)
                             } else {
-                              console.info(`Order ${canceledOrder.id} canceled.`)
+                              logger.info(`Order ${canceledOrder.id} canceled.`)
 
                               res.status(204).send()
 
                               const customerId = canceledOrder.customerId
                               if (!customerId) {
-                                console.warn(`No customer associated with order ${canceledOrder.id}. Cannot send cancelation email.`)
+                                logger.warn(`No customer associated with order ${canceledOrder.id}. Cannot send cancelation email.`)
                               } else {
-                                console.info(`Finding customer for order ${canceledOrder.id}`)
+                                logger.info(`Finding customer for order ${canceledOrder.id}`)
                                 customersApi.retrieveCustomer(customerId)
                                   .then(customerFound => customerFound.result.customer).then(customer => {
                                     if(!customer) {
-                                      console.warn(`Customer ${customerId} not found. Not sending cancelation email.`)
+                                      logger.warn(`Customer ${customerId} not found. Not sending cancelation email.`)
                                     } else {
-                                      console.info(`Sending cancelation confirmation email to customer with email ${customer.emailAddress}`)
+                                      logger.info(`Sending cancelation confirmation email to customer with email ${customer.emailAddress}`)
 
                                       axios.post('https://api.emailjs.com/api/v1.0/email/send', {
                                         service_id: process.env.EMAILJS_SERVICE,
@@ -1369,20 +1400,20 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                                           "Content-Type": "application/json",
                                           "Host": "api.emailjs.com"
                                         }
-                                      }).then(emailFulfilled => console.info(`${emailFulfilled.status} - Cancelation confirmation email sent to customer with email ${customer.emailAddress}`))
+                                      }).then(emailFulfilled => logger.info(`${emailFulfilled.status} - Cancelation confirmation email sent to customer with email ${customer.emailAddress}`))
                                       .catch(emailError => {
-                                        console.error(`Error emailing order confirmation email to customer with email ${customer.emailAddress}`)
-                                        console.error(emailError.toJSON())
+                                        logger.error(`Error emailing order confirmation email to customer with email ${customer.emailAddress}`)
+                                        logger.error(emailError.toJSON())
                                       })
                                     }
                                   }).catch(customerFindError => {
-                                    console.error(`Error in finding customer ${customerId}.`)
-                                    console.error(customerFindError.errors)
+                                    logger.error(`Error in finding customer ${customerId}.`)
+                                    logger.error(customerFindError.errors)
                                   })
                               }
                             }
                           }).catch(orderUpdateError => {
-                            console.error(`Error in canceling order ${orderId}.`)
+                            logger.error(`Error in canceling order ${orderId}.`)
                             const exception = {
                               status: 400,
                               message: `Server error in canceling order ${orderId}.`,
@@ -1390,13 +1421,13 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                               code: ORDERS_API_ERROR
                             }
                             
-                            console.error(printJSON(exception))
+                            logger.error(printJSON(exception))
                             res.status(exception.status).json(exception)
                           })
                         }
                       }
                     }).catch(orderFindError => {
-                      console.error(`Error in finding order ${orderId}.`)
+                      logger.error(`Error in finding order ${orderId}.`)
                       const exception = {
                         status: 400,
                         message: `Server error in finding order ${orderId}.`,
@@ -1404,7 +1435,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                         code: ORDERS_API_ERROR
                       }
                       
-                      console.error(printJSON(exception))
+                      logger.error(printJSON(exception))
                       res.status(exception.status).json(exception)
                     })
                 })
@@ -1417,14 +1448,14 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                   ordersApi.retrieveOrder(req.params.orderId)
                     .then(orderFulfilled => orderFulfilled.result.order).then(order => {
                       completeOrder(order).then(completedOrder => {
-                        console.info(`Completed order ${completedOrder.id}`)
-                        console.info(printJSON(completedOrder))
+                        logger.info(`Completed order ${completedOrder.id}`)
+                        logger.info(printJSON(completedOrder))
 
                         res.json(JSON.parse(printJSON(completedOrder)))
 
                         customersApi.retrieveCustomer(order.customerId)
                           .then(customerFulfilled => customerFulfilled.result.customer).then(customer => {
-                            console.info(`Emailing customer for order ${order.id} to email ${customer.emailAddress}`)
+                            logger.info(`Emailing customer for order ${order.id} to email ${customer.emailAddress}`)
                             axios.post('https://api.emailjs.com/api/v1.0/email/send', {
                               service_id: process.env.EMAILJS_SERVICE,
                               template_id: process.env.EMAILJS_SHIPPING_TEMPLATE,
@@ -1442,19 +1473,19 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                                 "Content-Type": "application/json",
                                 "Host": "api.emailjs.com"
                               }
-                            }).then(emailFulfilled => console.info(`${emailFulfilled.status} - Order completion email sent to customer with email ${customer.emailAddress}`))
+                            }).then(emailFulfilled => logger.info(`${emailFulfilled.status} - Order completion email sent to customer with email ${customer.emailAddress}`))
                             .catch(emailError => {
-                              console.error(`Error emailing order completion email to customer with email ${customer.emailAddress}`)
-                              console.error(emailError.toJSON())
+                              logger.error(`Error emailing order completion email to customer with email ${customer.emailAddress}`)
+                              logger.error(emailError.toJSON())
                             })
-                          }).catch(customerRejected => console.error(customerRejected))
+                          }).catch(customerRejected => logger.error(customerRejected))
                       }).catch(orderCompletionError => {
-                        console.error(printJSON(orderCompletionError))
+                        logger.error(printJSON(orderCompletionError))
 
                         res.status(orderCompletionError.status).json(orderCompletionError)
                       })
                     }).catch(orderError => {
-                      console.error(`Error retrieving order ${orderId} from Square`)
+                      logger.error(`Error retrieving order ${orderId} from Square`)
                       const exception = {
                         status: 400,
                         message: `Error retrieving order ${orderId} from Square`,
@@ -1462,7 +1493,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                         code: ORDERS_API_ERROR
                       }
 
-                      console.error(printJSON(exception))
+                      logger.error(printJSON(exception))
                       res.status(exception.status).json(exception)
                     })
                 })
@@ -1472,11 +1503,11 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                   const orderId = req.params.orderId
                   const { ordersApi } = squareClient
                   
-                  console.info(`Retrieving order ${orderId}`)
+                  logger.info(`Retrieving order ${orderId}`)
                   ordersApi.retrieveOrder(orderId)
                     .then(orderFound => orderFound.result.order).then(order => {
                       if(!order) {
-                        console.error(`Order ${orderId} not found`)
+                        logger.error(`Order ${orderId} not found`)
                         const exception = {
                           status: 404,
                           message: `Order ${orderId} not found`,
@@ -1486,10 +1517,10 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                           code: NOT_FOUND
                         }
 
-                        console.error(printJSON(exception))
+                        logger.error(printJSON(exception))
                         res.status(exception.status).json(exception)
                       } else {
-                        console.info(`Order ${order.id} found.`)
+                        logger.info(`Order ${order.id} found.`)
                         if(order.metadata) {
                           if(order.metadata.shippingLabelUrl) {
                             res.status(200).json({
@@ -1497,7 +1528,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                               url: order.metadata.shippingLabelUrl
                             })
                           } else if(order.metadata.shippingLabelId) {
-                            console.info(`Retrieving shipping label ${order.metadata.shippingLabelId} from ShipEngine`)
+                            logger.info(`Retrieving shipping label ${order.metadata.shippingLabelId} from ShipEngine`)
                             const headers = {
                               "Host": "api.shipengine.com",
                               "API-Key": process.env.SHIPENGINE_KEY,
@@ -1508,14 +1539,14 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                               .then(shippingLabelResult => {
                                 const label = shippingLabelResult.data
 
-                                console.info(`Received label ${label.label_id} for order ${order.id} - ${label.label_download.href}`)
+                                logger.info(`Received label ${label.label_id} for order ${order.id} - ${label.label_download.href}`)
                                 res.status(200).json({
                                   id: order.id,
                                   url: label.label_download.href
                                 })
                               })
                               .catch(shippingLabelError => {
-                                console.info(`Error retrieving shipping label for order ${order.id}`)
+                                logger.info(`Error retrieving shipping label for order ${order.id}`)
                                 const exception = {
                                   status: 500,
                                   message: `Error retrieving shipping label for order ${order.id}`,
@@ -1523,11 +1554,11 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                                   code: SHIPPING_LABEL_ERROR
                                 }
 
-                                console.error(printJSON(exception))
+                                logger.error(printJSON(exception))
                                 res.status(exception.status).json(exception)
                               })
                           } else {
-                            console.warn(`Order does not have a shipping label.`)
+                            logger.warn(`Order does not have a shipping label.`)
                             const exception = {
                               status: 400,
                               message: `Order ${order.id} does not have a shipping label`,
@@ -1540,7 +1571,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                             res.status(exception.status).json(exception)
                           }
                         } else {
-                          console.warn(`No label for order ${order.id}.`)
+                          logger.warn(`No label for order ${order.id}.`)
                           const exception = {
                             status: 404,
                             message: `No label for order ${order.id} found`,
@@ -1550,12 +1581,12 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                             code: NOT_FOUND
                           }
 
-                          console.error(printJSON(exception))
+                          logger.error(printJSON(exception))
                           res.status(exception.status).json(exception)
                         }
                       }
                     }).catch(findOrderError => {
-                      console.error(`Error finding order ${orderId}`)
+                      logger.error(`Error finding order ${orderId}`)
                       const exception = {
                         status: 500,
                         message: `Error finding order ${orderId}`,
@@ -1563,7 +1594,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                         code: ORDERS_API_ERROR
                       }
 
-                      console.info(printJSON(exception))
+                      logger.info(printJSON(exception))
                       res.status(exception.status).send(exception)
                     })
 
@@ -1595,7 +1626,9 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                     if(Array.isArray(rateFulfilled.data)) {
                       const rates = rateFulfilled.data
 
-                      const trackableRates = rates.filter((rate) => rate.trackable === true && rate.service_code === "usps_first_class_mail")
+                      const trackableRates = rates.filter((rate) => {
+                        return rate.trackable === true && serviceCodes.includes(rate.service_code) && rate.package_type === "package"
+                      })
                       let lowestRate = trackableRates[0]
                       for(let rate of trackableRates) {
                         if(rate.shipping_amount.amount < lowestRate.shipping_amount.amount) {
@@ -1603,7 +1636,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                         }
                       }
 
-                      console.info(`Estimated rate for ${postalCode}: $${lowestRate.shipping_amount.amount}`)
+                      logger.info(`Estimated rate for ${postalCode}: $${lowestRate.shipping_amount.amount}`)
 
                       res.status(200).json({
                         rate: lowestRate.shipping_amount.amount,
@@ -1615,31 +1648,31 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
 
                   }).catch((ratesError) => {
                     if (ratesError.response) {
-                      if(ratesError.status === 400) {
-                        console.error(`Bad request when estimating rate`)
+                      if(ratesError.response.status === 400) {
+                        logger.error(`Bad request when estimating rate`)
                         const exception = {
                           status: 400,
                           message: `Bad request when estimating rate`,
-                          data: ratesError.response,
+                          data: ratesError.response.data,
                           code: SHIPPING_RATE_ERROR
                         }
 
-                        console.error(printJSON(exception))
-                        res.status(exception.status.json(exception))
+                        logger.error(printJSON(exception))
+                        res.status(exception.status).json(exception)
                       } else {
-                        console.error(`ShipEngine Error`)
+                        logger.error(`ShipEngine Error`)
                         const exception = {
-                          status: ratesError.status,
+                          status: ratesError.response.status,
                           message: `ShipEngine Error`,
-                          data: ratesError.response,
+                          data: ratesError.response.data,
                           code: SHIPENGINE_ERROR
                         }
 
-                        console.error(printJSON(exception))
+                        logger.error(printJSON(exception))
                         res.status(exception.status).json(exception)
                       }
                     } else {
-                      console.error(`Internal Server Error.`)
+                      logger.error(`Internal Server Error.`)
                       const exception = {
                         status: 500,
                         message: `Internal Server Error.`,
@@ -1647,7 +1680,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                         code: SERVER_ERROR
                       }
 
-                      console.error(printJSON(exception))
+                      logger.error(printJSON(exception))
                       res.status(exception.status).json(exception)
                     }
                   })
@@ -1660,7 +1693,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                   switch(beatTape) {
                     // Return only Beat Tapes
                     case 'true': 
-                      console.info(`Getting all beat tapes for request from ${req.ip}`);
+                      logger.info(`Getting all beat tapes for request from ${req.ip}`);
                       projects.find({ beatTape: true }).toArray((error, result) => {
                         if(error) throw error
                         res.json(result)
@@ -1668,7 +1701,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                       break;
                     // Return only Albums
                     case 'false': 
-                      console.info(`Getting all albums for request from ${req.ip}`);
+                      logger.info(`Getting all albums for request from ${req.ip}`);
                       projects.find({ beatTape: false }).toArray((error, result) => {
                         if(error) throw error
                 
@@ -1677,7 +1710,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                       break;
                     // Return all Projects
                     default: 
-                      console.info(`Getting all projects for request from ${req.ip}`);
+                      logger.info(`Getting all projects for request from ${req.ip}`);
                       projects.find().toArray((error, result) => {
                         if(error) throw error
                 
@@ -1690,7 +1723,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
               // Singles
               app.route('/singles')
                 .get((req, res) => {
-                  console.info(`Getting all singles for request from ${req.ip}`);
+                  logger.info(`Getting all singles for request from ${req.ip}`);
                   singles.find().toArray((error, result) => {
                     if(error) throw error
 
@@ -1701,7 +1734,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
               // Videos
               app.route('/videos')
                 .get((req, res) => {
-                  console.info(`Getting all videos for request from ${req.ip}`);
+                  logger.info(`Getting all videos for request from ${req.ip}`);
                   videos.find().toArray((error, result) => {
                     if(error) throw error
 
@@ -1711,7 +1744,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
               
               // Listener
               app.listen(port, () => {
-                console.info(`The ZaePI is listening on port ${port}!`)
+                logger.info(`The ZaePI is listening on port ${port}!`)
               })
             })
           })
