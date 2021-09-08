@@ -22,7 +22,7 @@ const logOptions = {
 const logger = process.env.NODE_ENV === 'LOCAL' ? console : logdna.createLogger(process.env.LOGDNA_KEY, logOptions)
 
 const squareClient = new Client({
-  environment: Environment.Sandbox,
+  environment: process.env.NODE_ENV === 'LOCAL' ? Environment.Sandbox : Environment.Production,
   accessToken: process.env.SQUARE_ACCESS_TOKEN
 })
 
