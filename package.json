@@ -1,6 +1,6 @@
 {
   "name": "isaiahbullard-api",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "The API for Isaiah Bullard's Website and other application that retrieve data from his database.",
   "main": "app.js",
   "scripts": {
@@ -18,8 +18,15 @@
   },
   "homepage": "https://github.com/isaiah0812/isaiahbullard-api#readme",
   "dependencies": {
+    "@logdna/logger": "^2.3.2",
+    "axios": "^0.21.1",
+    "cors": "^2.8.5",
     "dotenv": "^8.2.0",
+    "emailjs-com": "^3.2.0",
     "express": "^4.17.1",
-    "mongodb": "^3.6.6"
+    "mongodb": "^3.6.6",
+    "pdf-lib": "^1.16.0",
+    "square": "^13.1.0",
+    "uuid": "^8.3.2"
   }
 }
