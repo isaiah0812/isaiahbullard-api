@@ -1057,56 +1057,65 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                     returnEntries: false,
                     locationIds: [process.env.SQUARE_LOC_ID]
                   }).then(ordersFulfilled => ordersFulfilled.result.orders).then(orders => {
-                    logger.info(`${orders.length} orders retrieved`)
-                    let result = []
-                    for(let order of orders) {
-
-                      let items = []
-                      let shippingCost = 0
-                      for(let item of order.lineItems) {
-                        if(item.uid !== 'shipping') {
-                          items.push({
-                            id: item.uid,
-                            name: item.name,
-                            quantity: item.quantity,
-                            itemPrice: Number.parseFloat(item.basePriceMoney.amount.toString()) / 100,
-                            totalPrice: Number.parseFloat(item.totalMoney.amount.toString()) / 100
-                          })
-                        } else {
-                          shippingCost = Number.parseFloat(item.totalMoney.amount.toString()) / 100
-                        }
-                      }
-
-                      let payments = []
-                      if(order.tenders) {
-                        for(let tender of order.tenders) {
-                          payments.push(tender.paymentId)
-                        }
-                      }
-
-                      result.push({
-                        id: order.id,
-                        customerId: order.customerId,
-                        items: items,
-                        shippingCost: shippingCost,
-                        orderCost: Number.parseFloat(order.totalMoney.amount.toString()) / 100,
-                        paymentIds: payments,
-                        orderStatus: order.state,
-                        shippingAddress: order.metadata && order.metadata.shippingLine1 ? {
-                          line1: order.metadata.shippingLine1,
-                          line2: order.metadata.shippingLine2 !== ' ' ? order.metadata.shippingLine2 : undefined,
-                          line3: order.metadata.shippingLine3 !== ' ' ? order.metadata.shippingLine3 : undefined,
-                          city: order.metadata.shippingCity,
-                          state: order.metadata.shippingState,
-                          postalCode: order.metadata.shippingPostalCode
-                        } : undefined,
-                        shippingLabelId: order.metadata && order.metadata.shippingLabelId ? order.metadata.shippingLabelId : undefined,
-                        shippingLabelUrl: order.metadata && order.metadata.shippingLabelUrl ? order.metadata.shippingLabelUrl : undefined,
-                        createdDate: new Date(order.createdAt)
+                    if(!orders) {
+                      console.warn('No orders found.')
+                      res.status(404).json({
+                        status: 404,
+                        message: 'No orders found.',
+                        code: NOT_FOUND
                       })
+                    } else {
+                      logger.info(`${orders.length} orders retrieved`)
+                      let result = []
+                      for(let order of orders) {
+  
+                        let items = []
+                        let shippingCost = 0
+                        for(let item of order.lineItems) {
+                          if(item.uid !== 'shipping') {
+                            items.push({
+                              id: item.uid,
+                              name: item.name,
+                              quantity: item.quantity,
+                              itemPrice: Number.parseFloat(item.basePriceMoney.amount.toString()) / 100,
+                              totalPrice: Number.parseFloat(item.totalMoney.amount.toString()) / 100
+                            })
+                          } else {
+                            shippingCost = Number.parseFloat(item.totalMoney.amount.toString()) / 100
+                          }
+                        }
+  
+                        let payments = []
+                        if(order.tenders) {
+                          for(let tender of order.tenders) {
+                            payments.push(tender.paymentId)
+                          }
+                        }
+  
+                        result.push({
+                          id: order.id,
+                          customerId: order.customerId,
+                          items: items,
+                          shippingCost: shippingCost,
+                          orderCost: Number.parseFloat(order.totalMoney.amount.toString()) / 100,
+                          paymentIds: payments,
+                          orderStatus: order.state,
+                          shippingAddress: order.metadata && order.metadata.shippingLine1 ? {
+                            line1: order.metadata.shippingLine1,
+                            line2: order.metadata.shippingLine2 !== ' ' ? order.metadata.shippingLine2 : undefined,
+                            line3: order.metadata.shippingLine3 !== ' ' ? order.metadata.shippingLine3 : undefined,
+                            city: order.metadata.shippingCity,
+                            state: order.metadata.shippingState,
+                            postalCode: order.metadata.shippingPostalCode
+                          } : undefined,
+                          shippingLabelId: order.metadata && order.metadata.shippingLabelId ? order.metadata.shippingLabelId : undefined,
+                          shippingLabelUrl: order.metadata && order.metadata.shippingLabelUrl ? order.metadata.shippingLabelUrl : undefined,
+                          createdDate: new Date(order.createdAt)
+                        })
+                      }
+  
+                      res.json(result)
                     }
-
-                    res.json(result)
                   }).catch(ordersError => {
                     logger.error(`Error retrieving all orders`)
                     const exception = {
