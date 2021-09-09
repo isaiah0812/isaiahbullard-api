@@ -1058,7 +1058,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                     locationIds: [process.env.SQUARE_LOC_ID]
                   }).then(ordersFulfilled => ordersFulfilled.result.orders).then(orders => {
                     if(!orders) {
-                      console.warn('No orders found.')
+                      logger.warn('No orders found.')
                       res.status(404).json({
                         status: 404,
                         message: 'No orders found.',
