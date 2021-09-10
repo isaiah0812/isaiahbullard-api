@@ -596,7 +596,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                         packages: [
                           {
                             weight: {
-                              value: weight,
+                              value: weight + 1,
                               unit: "ounce"
                             }
                           }
@@ -1621,7 +1621,7 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
                     from_postal_code: "72712",
                     to_country_code: "US",
                     to_postal_code: postalCode,
-                    weight: weight,
+                    weight: weight + 1,
                     ship_date: ship_date,
                     carrier_ids: [carrierCode]
                   }
