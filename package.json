@@ -1,6 +1,6 @@
 {
   "name": "isaiahbullard-api",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "The API for Isaiah Bullard's Website and other application that retrieve data from his database.",
   "main": "app.js",
   "scripts": {
