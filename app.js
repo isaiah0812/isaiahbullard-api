@@ -13,7 +13,7 @@ const logdna = require('@logdna/logger')
 const port = 8080
 const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 
-const carrierCode = process.env.NODE_ENV === 'LOCAL' || process.env.NODE_ENV === 'TEST' ? 'se-637975' : 'se-748344'
+const carrierCode = process.env.NODE_ENV === 'LOCAL' || process.env.NODE_ENV === 'TEST' ? 'se-637975' : 'se-749980'
 const serviceCodes = ["usps_parcel_select", "usps_first_class_mail", "usps_priority_mail"]
 
 const logOptions = {
