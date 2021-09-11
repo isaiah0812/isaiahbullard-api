@@ -1616,12 +1616,17 @@ MongoClient.connect(url, { useUnifiedTopology: true }, (err, client) => {
 
                   const ship_date = new Date().toISOString()
 
+                  const correctedWeight = {
+                    value: weight.value + 1,
+                    unit: weight.unit
+                  }
+
                   const body = {
                     from_country_code: "US",
                     from_postal_code: "72712",
                     to_country_code: "US",
                     to_postal_code: postalCode,
-                    weight: weight + 1,
+                    weight: correctedWeight,
                     ship_date: ship_date,
                     carrier_ids: [carrierCode]
                   }
