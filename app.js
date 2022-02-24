@@ -4,7 +4,6 @@ const express = require('express')
 const app = express()
 const cors = require('cors')
 const { v4: uuid } = require('uuid')
-const { Client, Environment } = require('square')
 const axios = require('axios')
 const { PDFDocument } = require('pdf-lib')
 const emailjs = require('emailjs-com')
@@ -16,11 +15,9 @@ const carrierCode = process.env.NODE_ENV === 'LOCAL' || process.env.NODE_ENV ===
 const serviceCodes = ["usps_parcel_select", "usps_first_class_mail", "usps_priority_mail"]
 
 const logger = require('./utils/logger');
+const printJSON = require('./utils/helpers').printJSON;
 
-const squareClient = new Client({
-  environment: process.env.NODE_ENV === 'LOCAL' || process.env.NODE_ENV === 'TEST' ? Environment.Sandbox : Environment.Production,
-  accessToken: process.env.SQUARE_ACCESS_TOKEN
-})
+const squareClient = require('./utils/square').client;
 
 app.use(express.json())
 app.use(cors({
@@ -30,14 +27,21 @@ app.use(cors({
 
 emailjs.init(process.env.EMAILJS_ID)
 
-const { EMAILJS_ERROR, ORDERS_API_ERROR, SHIPPING_LABEL_ERROR, SERVER_ERROR, PAYMENTS_API_ERROR, CUSTOMERS_API_ERROR, SOLD_OUT, SHIPPING_RATE_ERROR, NOT_FOUND, TOO_MANY, SHIPENGINE_ERROR, CARDS_API_ERROR, BAD_REQUEST } = require('./constants')
-
-const printJSON = (jsonObject) => {
-  return JSON.stringify(jsonObject, (key, value) => 
-    typeof value === 'bigint'
-      ? Number.parseInt(value)
-      : value, 2)
-}
+const {
+  EMAILJS_ERROR,
+  ORDERS_API_ERROR,
+  SHIPPING_LABEL_ERROR,
+  SERVER_ERROR,
+  PAYMENTS_API_ERROR,
+  CUSTOMERS_API_ERROR,
+  SOLD_OUT,
+  SHIPPING_RATE_ERROR,
+  NOT_FOUND,
+  TOO_MANY,
+  SHIPENGINE_ERROR,
+  CARDS_API_ERROR,
+  BAD_REQUEST
+} = require('./constants');
 
 const completeOrder = async (order) => {
   const { ordersApi, paymentsApi } = squareClient
@@ -215,174 +219,7 @@ const main = async () => {
     app.use('/credits', require('./credits'));
 
     // Customers
-    app.route('/customers/:customerId')
-      .get((req, res, next) => {
-        const customerId = req.params.customerId
-        
-        if (customerId === 'email') {
-          next()
-        } else {
-          const { customersApi } = squareClient
-          logger.info(`Getting customer ${customerId}`)
-
-          customersApi.retrieveCustomer(customerId)
-            .then(customerFulfilled => customerFulfilled.result.customer).then(customer => {
-              logger.info(`Customer ${customerId} with email ${customer.emailAddress} retrieved`)
-              const customerRetVal = {
-                id: customer.id,
-                firstName: customer.givenName,
-                lastName: customer.familyName,
-                email: customer.emailAddress
-              }
-
-              logger.info(printJSON(customerRetVal))
-
-              res.json(customerRetVal)
-            }).catch(customerError => {
-              logger.error(`Customer ${customerId} not found.`)
-              throw {
-                status: 404,
-                message: `Customer ${customerId} not found.`,
-                data: customerError.errors,
-                code: CUSTOMERS_API_ERROR
-              }
-            })
-        }
-      })
-
-    // TODO Log
-    app.route('/customers/:customerId/orders')
-      .get((req, res) => {
-        const { ordersApi } = squareClient
-        const customerId = req.params.customerId
-
-        ordersApi.searchOrders({
-          locationIds: [process.env.SQUARE_LOC_ID],
-          returnEntries: false,
-          query: {
-            filter: {
-              customerFilter: {
-                customerIds: [customerId]
-              }
-            }
-          }
-        }).then(ordersFulfilled => ordersFulfilled.result.orders).then(orders => {
-          let response = []
-          for(let order of orders) {
-            let cart = []
-            for(let item of order.lineItems) {
-              if (item.uid !== 'shipping') {
-                cart.push({
-                  uid: item.uid,
-                  id: item.metadata.id,
-                  name: item.name,
-                  quantity: Number.parseInt(item.quantity),
-                  price: Number.parseInt(item.totalMoney.amount) / 100
-                })
-              }
-            }
-            const shipping = Number.parseInt(order.lineItems.find(item => item.uid === 'shipping').totalMoney.amount) / 100
-            const totalCost = Number.parseInt(order.totalMoney.amount) / 100
-            
-            let payments = []
-            for(let payment of order.tenders) {
-              payments.push({
-                id: payment.id,
-                amount: Number.parseInt(payment.amountMoney.amount) / 100,
-                cardDetails: payment.type === 'CARD'
-                  ? {
-                    brand: payment.cardDetails.card.cardBrand,
-                    last4: payment.cardDetails.card.last4,
-                    expMonth: payment.cardDetails.card.expMonth,
-                    expYear: payment.cardDetails.card.expYear
-                  } : undefined
-              })
-            }
-
-            response.push({
-              id: order.id,
-              cart: cart,
-              shipping: shipping,
-              totalCost: totalCost,
-              createdDate: order.createdAt,
-              state: order.state,
-              shippingAddress: {
-                line1: order.metadata.shippingLine1,
-                line2: order.metadata.shippingLine2,
-                line3: order.metadata.shippingLine3,
-                city: order.metadata.shippingCity,
-                state: order.metadata.shippingState,
-                postalCode: order.metadata.shippingPostalCode
-              },
-              payments: payments
-            })
-          }
-          
-          res.json(JSON.parse(printJSON(response)))
-        }).catch(orderError => logger.error(orderError))
-      })
-
-    app.route('/customers/email')
-      .get((req, res) => {
-        const { customersApi } = squareClient
-        const { email } = req.body
-
-        customersApi.searchCustomers({
-          query: {
-            filter: {
-              emailAddress: {
-                exact: email
-              }
-            }
-          }
-        }).then(customerFulfilled => customerFulfilled.result.customers).then(customers => {
-          const customer = customers[0]
-          
-          let code = ""
-          for(let i = 0; i < 8; i++) {
-            code = code.concat(characters.charAt(Math.floor(Math.random() * characters.length)))
-          }
-
-          axios.post('https://api.emailjs.com/api/v1.0/email/send', {
-            service_id: process.env.EMAILJS_SERVICE,
-            template_id: process.env.EMAILJS_CODE_TEMPLATE,
-            user_id: process.env.EMAILJS_ID,
-            accessToken: process.env.EMAILJS_TOKEN,
-            template_params: {
-              first_name: customer.givenName,
-              code: code,
-              email: customer.emailAddress
-            }
-          }, {
-            headers: {
-              "Content-Type": "application/json",
-              "Host": "api.emailjs.com"
-            }
-          }).then(emailFulfilled => {
-            logger.info(`${emailFulfilled.status} - Code ${code} sent to customer with email ${customer.emailAddress}`)
-            const response = {
-              id: customer.id,
-              firstName: customer.givenName,
-              lastName: customer.familyName,
-              email: customer.emailAddress
-            }
-            logger.info(`Customer Retrieved via email:\n${printJSON(response)}`)
-
-            res.json(response)
-          }).catch(emailError => {
-            logger.error(`Error emailing order confirmation email to customer with email ${customer.emailAddress}`)
-            const exception = {
-              status: 500,
-              message: `Internal Server Error`,
-              data: emailError,
-              code: EMAILJS_ERROR
-            }
-
-            logger.error(printJSON(exception))
-            res.status(exception.status).json(exception)
-          })
-        }).catch(customersError => logger.info(customersError))
-      })
+    app.use('/customers', require('./customers'));
 
     app.route('/health')
       .get((req, res) => res.status(200).send())
