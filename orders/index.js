@@ -230,7 +230,6 @@ router.route('/')
       logger.info('Loading cart and calculating price and weight');
       for (let item of cart) {
         try {
-          console.log(item);
           const merchItem = await merch.findOne({id: item.merchId});
 
           const itemSize = item.sizeId && merchItem.sizes
