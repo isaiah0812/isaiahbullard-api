@@ -5,8 +5,17 @@ const db = require('../mongo/setup').getDb();
 const router = express.Router();
 const projects = db.collection('projects');
 
+/**
+ * TODO:
+ * - POST / (create a project)
+ */
 router.route('/')
   .get((req, res) => {
+    /**
+     * TODO:
+     * - Add sorting by name and date
+     * - Add 'album' query parameter
+     */
     const beatTape = req.query.beatTape // beatTape query parameter
     switch(beatTape) {
       // Return only Beat Tapes
@@ -37,5 +46,12 @@ router.route('/')
         break;
     }
   });
+
+/**
+ * TODO:
+ * - GET /:id (get project)
+ * - PUT /:id (update project)
+ * - DELETE /:id (delete project)
+ */
 
 module.exports = router;

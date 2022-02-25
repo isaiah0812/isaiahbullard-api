@@ -1,3 +1,12 @@
+// 
+/**
+ * TODO:
+ * - Make sure every endpoint returns no matter what.
+ * - Make all unsafe requests require OAuth.
+ * - USE HYPERMEDIA
+ * - Convert to TypeScript.
+ */
+
 require('dotenv').config()
 
 const express = require('express')

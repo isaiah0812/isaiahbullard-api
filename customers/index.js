@@ -1,5 +1,3 @@
-// TODO major bug clean up to make sure each endpoint returns no matter what
-
 require('dotenv').config();
 
 const express = require("express");
@@ -16,6 +14,11 @@ const {
   EMAILJS_ERROR,
   CUSTOMERS_API_ERROR,
 } = require('../constants');
+
+/**
+ * TODO:
+ * - GET / (get all customers)
+ */
 
 router.route('/:customerId')
   .get((req, res, next) => {

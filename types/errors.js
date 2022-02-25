@@ -1,3 +1,5 @@
+// TODO: Create an error for each problem instead of problem codes
+
 class BaseError {
   constructor(error) {
     this.error = error;

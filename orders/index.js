@@ -32,6 +32,7 @@ const {
   BAD_REQUEST
 } = require('../constants');
 
+// TODO: Shorten Function
 const completeOrder = async (order) => {
   const { ordersApi, paymentsApi } = square;
   logger.info(`Completing order ${order.id}${order.customerId ? ` for customer with id ${order.customerId}` : ''}`);
@@ -188,6 +189,7 @@ const completeOrder = async (order) => {
   return completedOrder;
 }
 
+// TODO: Require OAuth
 router.route('/')
   .post((req, res) => {
     const placeOrder = async (customer, cardToken, orderRequest) => {
@@ -784,6 +786,7 @@ router.route('/')
     });
   })
   .get((req, res) => {
+    // TODO: add filtering and sorting options
     logger.info(`Getting all orders`);
 
     const { ordersApi } = square;
@@ -865,6 +868,7 @@ router.route('/')
     });
   });
 
+// TODO: Require OAuth
 router.route('/admin-auth')
   .post((req, res) => {
     const user = req.body;
@@ -882,6 +886,7 @@ router.route('/admin-auth')
     }
   })
 
+// TODO: Require OAuth 
 router.route('/complete')
   .post((req, res) => {
     const { ordersApi, customersApi } = square;
@@ -997,6 +1002,7 @@ router.route('/complete')
     });
   });
 
+// TODO: Require OAuth
 router.route('/merge')
   .post((req, res) => {
     const mergeLabels = async () => {
@@ -1052,6 +1058,7 @@ router.route('/merge')
     mergeLabels();
   });
 
+// TODO: Require OAuth
 router.route('/:orderId/cancel')
   .put((req, res) => {
     const orderId = req.params.orderId;
@@ -1184,6 +1191,7 @@ router.route('/:orderId/cancel')
       });
   });
 
+// TODO: Require OAuth
 router.route('/:orderId/complete')
   .post((req, res) => {
     const { ordersApi, customersApi } = square;
@@ -1242,6 +1250,7 @@ router.route('/:orderId/complete')
       });
   });
 
+// TODO: Require OAuth
 router.route('/:orderId/label')
   .get((req, res) => {
     const orderId = req.params.orderId;
@@ -1343,6 +1352,7 @@ router.route('/:orderId/label')
 
   });
 
+// TODO: Require OAuth
 router.route('/rates/estimate')
   .post((req, res) => {
     const { postalCode, weight } = req.body;
