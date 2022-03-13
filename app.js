@@ -16,7 +16,7 @@ const emailjs = require('emailjs-com')
 
 const port = 8080
 
-const logger = require('./utils/logger');
+const logger = require('./config/logger');
 
 app.use(express.json())
 app.use(cors({

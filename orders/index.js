@@ -6,8 +6,8 @@ const { v4: uuid } = require('uuid');
 const { PDFDocument } = require('pdf-lib');
 
 const db = require('../mongo/setup').getDb();
-const logger = require('../utils/logger');
-const square = require('../utils/square').client;
+const logger = require('../config/logger');
+const square = require('../config/square').client;
 
 const merch = db.collection('merch');
 const router = express.Router();

@@ -3,8 +3,8 @@ require('dotenv').config();
 const express = require("express");
 const axios = require('axios');
 
-const logger = require('../utils/logger');
-const square = require('../utils/square').client;
+const logger = require('../config/logger');
+const square = require('../config/square').client;
 
 const router = express.Router();
 const printJSON = require('../utils/helpers').printJSON;

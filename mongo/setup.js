@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const { MongoClient } = require('mongodb');
 const { ClientConnectionError } = require('../types/errors');
-const logger = require('../utils/logger');
+const logger = require('../config/logger');
 
 const url = `mongodb://${process.env.MONGO_URL}`;
 const client = new MongoClient(url, { useUnifiedTopology: true });
