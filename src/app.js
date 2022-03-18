@@ -28,7 +28,7 @@ emailjs.init(process.env.EMAILJS_ID);
 
 const main = async () => {
   try {
-    await require('./mongo/setup').connectDb();
+    await require('./db/setup').connectDb();
 
     // Dead home path
     app.use('/', (req, res, next) => {

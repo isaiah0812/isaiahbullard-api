@@ -8,7 +8,7 @@ const { PDFDocument } = require('pdf-lib');
 const { checkJwt, scopes } = require("../config/auth");
 const logger = require('../config/logger');
 const square = require('../config/square').client;
-const db = require('../mongo/setup').getDb();
+const db = require('../db/setup').getDb();
 
 const merch = db.collection('merch');
 const router = express.Router();

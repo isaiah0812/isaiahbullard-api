@@ -1,6 +1,6 @@
 const express = require("express");
 const logger = require('../config/logger');
-const db = require('../mongo/setup').getDb();
+const db = require('../db/setup').getDb();
 
 const router = express.Router();
 const credits = db.collection('credits');

@@ -2,10 +2,10 @@
   "name": "isaiahbullard-api",
   "version": "1.1.6",
   "description": "The API for Isaiah Bullard's Website and other application that retrieve data from his database.",
-  "main": "app.js",
+  "main": "src/app.js",
   "scripts": {
     "test": "npm run test",
-    "start": "node app.js"
+    "start": "node src/app.js"
   },
   "repository": {
     "type": "git",

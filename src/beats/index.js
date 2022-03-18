@@ -6,7 +6,7 @@
 const express = require("express");
 const { checkJwt } = require("../config/auth");
 const logger = require('../config/logger');
-const db = require('../mongo/setup').getDb();
+const db = require('../db/setup').getDb();
 
 const router = express.Router();
 const beats = db.collection('beats');
