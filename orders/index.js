@@ -5,9 +5,10 @@ const axios = require('axios');
 const { v4: uuid } = require('uuid');
 const { PDFDocument } = require('pdf-lib');
 
-const db = require('../mongo/setup').getDb();
+const { checkJwt, scopes } = require("../config/auth");
 const logger = require('../config/logger');
 const square = require('../config/square').client;
+const db = require('../mongo/setup').getDb();
 
 const merch = db.collection('merch');
 const router = express.Router();
@@ -189,9 +190,11 @@ const completeOrder = async (order) => {
   return completedOrder;
 }
 
+// Endpoints
+
 // TODO: Require OAuth
 router.route('/')
-  .post((req, res) => {
+  .post(checkJwt, scopes.createOrders, (req, res) => {
     const placeOrder = async (customer, cardToken, orderRequest) => {
       const { ordersApi, paymentsApi } = square;
     
@@ -784,7 +787,7 @@ router.route('/')
       });
     });
   })
-  .get((req, res) => {
+  .get(checkJwt, scopes.readOrders, (req, res) => {
     // TODO: add filtering and sorting options
     logger.info(`Getting all orders`);
 
@@ -887,7 +890,7 @@ router.route('/admin-auth')
 
 // TODO: Require OAuth 
 router.route('/complete')
-  .post((req, res) => {
+  .post(checkJwt, scopes.completeOrders, (req, res) => {
     const { ordersApi, customersApi } = square;
 
     ordersApi.searchOrders({
@@ -1003,7 +1006,7 @@ router.route('/complete')
 
 // TODO: Require OAuth
 router.route('/merge')
-  .post((req, res) => {
+  .post(checkJwt, scopes.readLabels, (req, res) => {
     const mergeLabels = async () => {
       const { labelUrls } = req.body;
       
@@ -1059,7 +1062,7 @@ router.route('/merge')
 
 // TODO: Require OAuth
 router.route('/:orderId/cancel')
-  .put((req, res) => {
+  .put(checkJwt, scopes.cancelOrders, (req, res) => {
     const orderId = req.params.orderId;
     const { ordersApi, customersApi } = square;
 
@@ -1192,7 +1195,7 @@ router.route('/:orderId/cancel')
 
 // TODO: Require OAuth
 router.route('/:orderId/complete')
-  .post((req, res) => {
+  .post(checkJwt, scopes.completeOrders, (req, res) => {
     const { ordersApi, customersApi } = square;
     const { orderId } = req.params;
 
@@ -1251,7 +1254,7 @@ router.route('/:orderId/complete')
 
 // TODO: Require OAuth
 router.route('/:orderId/label')
-  .get((req, res) => {
+  .get(checkJwt, scopes.readLabels, (req, res) => {
     const orderId = req.params.orderId;
     const { ordersApi } = square;
     
@@ -1353,7 +1356,7 @@ router.route('/:orderId/label')
 
 // TODO: Require OAuth
 router.route('/rates/estimate')
-  .post((req, res) => {
+  .post(checkJwt, scopes.readEstimate, (req, res) => {
     const { postalCode, weight } = req.body;
 
     const ship_date = new Date().toISOString();

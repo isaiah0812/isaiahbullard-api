@@ -20,7 +20,10 @@ router.route('/')
 
       res.json(result)
     })
-  });
+  })
+  .post(checkJwt, (req, res) => {
+    res.send(req.body);
+  })
 
 /**
  * TODO: 
