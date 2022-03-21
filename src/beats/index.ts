@@ -2,8 +2,6 @@
  * TODO: Consider turning beats page into real beat store and move beat tapes.
  * This is for the site, but still.
  */
-
-// const express = require("express");
 import express, { Request, Response } from 'express';
 import { getDb } from '../db/setup';
 import { checkJwt } from '../config/auth';
