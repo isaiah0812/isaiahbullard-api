@@ -6,16 +6,15 @@
  * - Convert to TypeScript.
  */
 
-require('dotenv').config();
+import express, { NextFunction, Request, Response } from 'express';
+import cors from 'cors';
+import emailjs from 'emailjs-com';
+import { config } from 'dotenv';
+const { default: logger } = require('./config/logger')
 
-const express = require('express');
+config();
 const app = express();
-const cors = require('cors');
-const emailjs = require('emailjs-com');
-
 const port = 8080;
-
-const logger = require('./config/logger');
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -24,14 +23,14 @@ app.use(cors({
   credentials: true
 }));
 
-emailjs.init(process.env.EMAILJS_ID);
+emailjs.init(process.env.EMAILJS_ID as string);
 
 const main = async () => {
   try {
     await require('./db/setup').connectDb();
 
     // Dead home path
-    app.use('/', (req, res, next) => {
+    app.use('/', (req: Request, res: Response, next: NextFunction) => {
       next()
     });
     
@@ -52,7 +51,7 @@ const main = async () => {
      * - return response body
      */
     app.route('/health')
-      .get((req, res) => res.status(200).send());
+      .get((req: Request, res: Response) => res.status(200).send());
 
     // Listener
     app.listen(port, () => {

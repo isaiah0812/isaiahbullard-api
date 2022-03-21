@@ -1,7 +1,8 @@
-const express = require("express");
-const logger = require('../config/logger');
-const db = require('../db/setup').getDb();
+import express, { Request, Response } from 'express';
+import { getDb } from '../db/setup';
+const { default: logger } = require('../config/logger');
 
+const db = getDb();
 const router = express.Router();
 const credits = db.collection('credits');
 
@@ -10,7 +11,7 @@ const credits = db.collection('credits');
  * - POST / (create a credit)
  */
 router.route('/')
-  .get((req, res) => {
+  .get((req: Request, res: Response) => {
     logger.info(`Getting all credits for request from ${req.ip}`);
     credits.find().toArray((error, result) => {
       if(error) throw error

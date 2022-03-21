@@ -1,23 +1,14 @@
-require('dotenv').config();
+import express from 'express';
+import axios from 'axios';
+import { v4 as uuid } from 'uuid';
+import { PDFDocument } from 'pdf-lib';
+import { checkJwt, scopes } from '../config/auth';
+import { client as square } from '../config/square';
+import { getDb } from '../db/setup';
+import { printJSON } from '../utils/helpers';
+const { default: logger } = require('../config/logger');
 
-const express = require("express");
-const axios = require('axios');
-const { v4: uuid } = require('uuid');
-const { PDFDocument } = require('pdf-lib');
-
-const { checkJwt, scopes } = require("../config/auth");
-const logger = require('../config/logger');
-const square = require('../config/square').client;
-const db = require('../db/setup').getDb();
-
-const merch = db.collection('merch');
-const router = express.Router();
-const printJSON = require('../utils/helpers').printJSON;
-
-const carrierCode = process.env.NODE_ENV === 'LOCAL' || process.env.NODE_ENV === 'TEST' ? 'se-637975' : 'se-749980';
-const serviceCodes = ["usps_parcel_select", "usps_first_class_mail", "usps_priority_mail"];
-
-const {
+import {
   EMAILJS_ERROR,
   ORDERS_API_ERROR,
   SHIPPING_LABEL_ERROR,
@@ -31,21 +22,32 @@ const {
   SHIPENGINE_ERROR,
   CARDS_API_ERROR,
   BAD_REQUEST
-} = require('../constants');
+} from '../constants';
+import { Card, Customer, Error, Order, OrderLineItem, Payment } from 'square';
+import { object } from 'square/dist/schema';
+
+require('dotenv').config();
+
+const db = getDb();
+const merch = db.collection('merch');
+const router = express.Router();
+
+const carrierCode = process.env.NODE_ENV === 'LOCAL' || process.env.NODE_ENV === 'TEST' ? 'se-637975' : 'se-749980';
+const serviceCodes = ["usps_parcel_select", "usps_first_class_mail", "usps_priority_mail"];
 
 // TODO: Shorten Function
-const completeOrder = async (order) => {
+const completeOrder = async (order: Order) => {
   const { ordersApi, paymentsApi } = square;
   logger.info(`Completing order ${order.id}${order.customerId ? ` for customer with id ${order.customerId}` : ''}`);
   let lineItems = [];
-  for(const lineItem of order.lineItems) {
+  for(const lineItem of order.lineItems!) {
     if(lineItem.uid !== 'shipping') {
       lineItems.push({
         id: lineItem.uid,
         name: lineItem.name,
         quantity: Number.parseFloat(lineItem.quantity),
-        price: Number.parseFloat(lineItem.basePriceMoney.amount.toString()) / 100,
-        totalPrice: Number.parseFloat(lineItem.totalMoney.amount.toString()) / 100
+        price: Number.parseFloat(lineItem.basePriceMoney!.amount!.toString()) / 100,
+        totalPrice: Number.parseFloat(lineItem.totalMoney!.amount!.toString()) / 100
       })
     }
   }
@@ -53,9 +55,13 @@ const completeOrder = async (order) => {
   let completedOrder = {
     id: order.id,
     customerId: order.customerId,
-    paymentIds: [],
-    totalCost: Number.parseFloat(order.totalMoney.amount.toString()) / 100,
-    items: lineItems
+    paymentIds: [] as string[],
+    totalCost: Number.parseFloat(order.totalMoney!.amount!.toString()) / 100,
+    items: lineItems,
+    shippingLabelInfo: {} as any,
+    receiptUrl: "",
+    name: "",
+    shippingAddress: {},
   };
 
   if(order.metadata && order.metadata.rate_id && !order.metadata.shippingLabelId && !order.metadata.shipmentId) {
@@ -83,10 +89,10 @@ const completeOrder = async (order) => {
         }
       };
 
-      logger.info(`Updating order ${order.id} with label ${label.label_id}`);
-      const orderPromise = await ordersApi.updateOrder(order.id, {
+      logger.info(`Updating order ${order.id!} with label ${label.label_id}`);
+      const orderPromise = await ordersApi.updateOrder(order.id!, {
         order: {
-          locationId: process.env.SQUARE_LOC_ID,
+          locationId: process.env.SQUARE_LOC_ID as string,
           metadata: {
             ...order.metadata,
             shippingLabelId: label.label_id,
@@ -97,8 +103,8 @@ const completeOrder = async (order) => {
         }
       });
       const { order: updatedOrder } = orderPromise.result;
-      logger.info(`Order ${updatedOrder.id} updated with shipping label id ${updatedOrder.metadata.shippingLabelId}`);
-    } catch(e) {
+      logger.info(`Order ${updatedOrder!.id} updated with shipping label id ${updatedOrder!.metadata!.shippingLabelId}`);
+    } catch(e: any) {
       logger.error(`Error completing order ${order.id}`);
 
       let exception = {};
@@ -151,34 +157,34 @@ const completeOrder = async (order) => {
   }
 
   try {
-    for(const tender of order.tenders) {
-      if(tender.cardDetails.status === 'AUTHORIZED') {
+    for(const tender of order.tenders!) {
+      if(tender.cardDetails!.status === 'AUTHORIZED') {
         logger.info(`Completing payment ${tender.paymentId} for order ${order.id}`);
 
-        const paymentPromise = await paymentsApi.completePayment(tender.paymentId);
+        const paymentPromise = await paymentsApi.completePayment(tender.paymentId!);
         const { payment } = paymentPromise.result;
 
         completedOrder = {
           ...completedOrder,
-          receiptUrl: payment.receiptUrl,
-          name: `${payment.shippingAddress.firstName} ${payment.shippingAddress.lastName}`,
+          receiptUrl: payment!.receiptUrl!,
+          name: `${payment!.shippingAddress!.firstName} ${payment!.shippingAddress!.lastName}`,
           shippingAddress: {
-            line1: payment.shippingAddress.addressLine1,
-            line2: payment.shippingAddress.addressLine2 ? payment.shippingAddress.addressLine2 : undefined,
-            line3: payment.shippingAddress.addressLine3 ? payment.shippingAddress.addressLine3 : undefined,
-            city: payment.shippingAddress.locality,
-            state: payment.shippingAddress.administrativeDistrictLevel1,
-            postalCode: payment.shippingAddress.postalCode,
+            line1: payment!.shippingAddress!.addressLine1,
+            line2: payment!.shippingAddress!.addressLine2 ? payment!.shippingAddress!.addressLine2 : undefined,
+            line3: payment!.shippingAddress!.addressLine3 ? payment!.shippingAddress!.addressLine3 : undefined,
+            city: payment!.shippingAddress!.locality,
+            state: payment!.shippingAddress!.administrativeDistrictLevel1,
+            postalCode: payment!.shippingAddress!.postalCode,
           },
         };
-        completedOrder.paymentIds.push(payment.id);
+        completedOrder.paymentIds.push(payment!.id!);
       }
     }
-  } catch(e) {
-    logger.error(`Error completing payment ${tender.paymentId} for order ${order.id}`);
+  } catch(e: any) {
+    logger.error(`Error completing payment for order ${order.id}`);
     const exception = {
       status: 400,
-      message: `Error completing payment ${tender.paymentId} from order ${order.id}`,
+      message: `Error completing payment from order ${order.id}`,
       data: e.errors,
       code: PAYMENTS_API_ERROR
     };
@@ -195,7 +201,7 @@ const completeOrder = async (order) => {
 // TODO: Require OAuth
 router.route('/')
   .post(checkJwt, scopes.createOrders, (req, res) => {
-    const placeOrder = async (customer, cardToken, orderRequest) => {
+    const placeOrder = async (customer: Customer, cardToken: string, orderRequest: any) => {
       const { ordersApi, paymentsApi } = square;
     
       const {
@@ -226,7 +232,7 @@ router.route('/')
       } = billingAddress;
     
       // Mapping cart to line items
-      let lineItems = [];
+      let lineItems: OrderLineItem[] = [];
       let shippingLabelItems = [];
       let weight = 0;
 
@@ -235,65 +241,65 @@ router.route('/')
         try {
           const merchItem = await merch.findOne({id: item.merchId});
 
-          const itemSize = item.sizeId && merchItem.sizes
-            ? merchItem.sizes.find(size => size.id === item.sizeId)
+          const itemSize = item.sizeId && merchItem!.sizes
+            ? merchItem!.sizes.find((size: any) => size.id === item.sizeId)
             : undefined;
 
-          if((itemSize && itemSize.quantity === 0) || merchItem.quantity === 0) {
-            logger.error(`${merchItem.name}${itemSize ? `(${itemSize.name})` : ``} is sold out.`);
+          if((itemSize && itemSize.quantity === 0) || merchItem!.quantity === 0) {
+            logger.error(`${merchItem!.name}${itemSize ? `(${itemSize.name})` : ``} is sold out.`);
 
             throw {
               status: 400,
-              message: `${merchItem.name}${itemSize ? ` (${itemSize.name})` : ``} is sold out.`,
+              message: `${merchItem!.name}${itemSize ? ` (${itemSize.name})` : ``} is sold out.`,
               data: {
-                mechId: merchItem.id,
-                name: `${merchItem.name}${itemSize ? ` (${itemSize.name})` : ``}`,
+                mechId: merchItem!.id,
+                name: `${merchItem!.name}${itemSize ? ` (${itemSize.name})` : ``}`,
                 request: item.quantity,
                 stock: 0
               },
               code: SOLD_OUT
             };
-          } else if ((itemSize && itemSize.quantity < item.quantity) || merchItem.quantity < item.quantity) {
-            const itemQuantity = itemSize ? itemSize.quantity : merchItem.quantity;
-            logger.error(`${merchItem.name}${itemSize ? `(${itemSize.name})` : ``} has less in stock than the requested amount.\nRequested Amount: ${item.quantity}\nAmount In Stock: ${itemQuantity}`);
+          } else if ((itemSize && itemSize.quantity < item.quantity) || merchItem!.quantity < item.quantity) {
+            const itemQuantity = itemSize ? itemSize.quantity : merchItem!.quantity;
+            logger.error(`${merchItem!.name}${itemSize ? `(${itemSize.name})` : ``} has less in stock than the requested amount.\nRequested Amount: ${item.quantity}\nAmount In Stock: ${itemQuantity}`);
 
             throw {
               status: 400,
-              message: `${merchItem.name}${itemSize ? ` (${itemSize.name})` : ``} has less in stock than the requested amount.`,
+              message: `${merchItem!.name}${itemSize ? ` (${itemSize.name})` : ``} has less in stock than the requested amount.`,
               data: {
-                mechId: merchItem.id,
-                name: `${merchItem.name}${itemSize ? ` (${itemSize.name})` : ``}`,
+                mechId: merchItem!.id,
+                name: `${merchItem!.name}${itemSize ? ` (${itemSize.name})` : ``}`,
                 request: item.quantity,
                 stock: itemQuantity
               },
               code: TOO_MANY
             };
           } else {
-            const itemPrice = itemSize && itemSize.price ? itemSize.price : merchItem.price;
-            const itemWeight = itemSize ? itemSize.weight : merchItem.weight;
+            const itemPrice = itemSize && itemSize.price ? itemSize.price : merchItem!.price;
+            const itemWeight = itemSize ? itemSize.weight : merchItem!.weight;
 
             lineItems.push({
               quantity: item.quantity.toString(),
               basePriceMoney: {
-                amount: itemPrice * 100,
+                amount: BigInt(itemPrice * 100),
                 currency: 'USD'
               },
-              name: `${merchItem.name}${itemSize ? ` (${itemSize.name})` : ``}`,
+              name: `${merchItem!.name}${itemSize ? ` (${itemSize.name})` : ``}`,
               uid: uuid(),
               metadata: itemSize ? {
-                id: merchItem.id,
+                id: merchItem!.id,
                 sizeId: itemSize.id
-              } : { id: merchItem.id }
+              } : { id: merchItem!.id }
             });
 
             shippingLabelItems.push({
-              name: `${merchItem.name}${itemSize ? ` (${itemSize.name})` : ``}`,
+              name: `${merchItem!.name}${itemSize ? ` (${itemSize.name})` : ``}`,
               quantity: item.quantity,
             });
 
             weight += (itemWeight * item.quantity);
           }
-        } catch (merchFindError) {
+        } catch (merchFindError: any) {
           if(merchFindError.code === SOLD_OUT || merchFindError.code === TOO_MANY) {
             throw merchFindError;
           } else {
@@ -348,8 +354,8 @@ router.route('/')
         }
       };
       
-      let orderId = null;
-      let orderVersion = null;
+      let orderId: string = "";
+      let orderVersion = 0;
       try {
         const shippingRateResponse = await axios.post("https://api.shipengine.com/v1/rates", body, {
           headers: {
@@ -362,7 +368,7 @@ router.route('/')
         if(Array.isArray(shippingRateResponse.data.rate_response.rates)) {
           const rates = shippingRateResponse.data.rate_response.rates;
     
-          const trackableRates = rates.filter((rate) => rate.trackable === true && serviceCodes.includes(rate.service_code) && rate.package_type === "package");
+          const trackableRates = rates.filter((rate: any) => rate.trackable === true && serviceCodes.includes(rate.service_code) && rate.package_type === "package");
           let lowestRate = trackableRates[0];
           for(let rate of trackableRates) {
             if(rate.shipping_amount.amount < lowestRate.shipping_amount.amount) {
@@ -375,7 +381,7 @@ router.route('/')
           lineItems.push({
             quantity: "1",
             basePriceMoney: {
-              amount: Math.ceil(shippingRate * 100),
+              amount: BigInt(Math.ceil(shippingRate * 100)),
               currency: 'USD',
             },
             name: 'Shipping',
@@ -386,7 +392,7 @@ router.route('/')
           const orderResponse = await ordersApi.createOrder({
             idempotencyKey: uuid(),
             order: {
-              locationId: process.env.SQUARE_LOC_ID,
+              locationId: process.env.SQUARE_LOC_ID as string,
               lineItems: lineItems,
               customerId: customer ? customer.id : undefined,
               metadata: {
@@ -401,18 +407,18 @@ router.route('/')
             }
           });
                           
-          const order = orderResponse.result.order;
+          const order: Order = orderResponse.result.order!;
           logger.info(`Order created: ${printJSON(order)}`);
   
-          orderId = order.id;
-          orderVersion = order.version;
+          orderId = order.id!;
+          orderVersion = order.version!;
           logger.info(`Creating Payment for Order with id ${orderId}`);
   
           const paymentResponse = await paymentsApi.createPayment({
             sourceId: cardToken,
             idempotencyKey: uuid(),
             amountMoney: {
-              amount: order.totalMoney.amount,
+              amount: order.totalMoney!.amount,
               currency: "USD",
             },
             shippingAddress: {
@@ -443,25 +449,25 @@ router.route('/')
             autocomplete: false
           });
   
-          const payment = paymentResponse.result.payment;
+          const payment: Payment = paymentResponse.result.payment!;
           logger.info(`Payment Created: ${printJSON(payment)}`);
 
           for (let item of cart) {
             try {
               const merchItem = await merch.findOne({id: item.merchId});
 
-              const itemSize = item.sizeId && merchItem.sizes
-                ? merchItem.sizes.find(size => size.id === item.sizeId)
+              const itemSize = item.sizeId && merchItem!.sizes
+                ? merchItem!.sizes.find((size: any) => size.id === item.sizeId)
                 : undefined;
 
               if(itemSize) {
-                await merch.updateOne({_id: merchItem._id, "sizes.id": itemSize.id}, {
+                await merch.updateOne({_id: merchItem!._id, "sizes.id": itemSize.id}, {
                   $inc: {
                     "sizes.$.quantity": -1 * item.quantity
                   }
                 });
               } else {
-                await merch.updateOne({_id: merchItem._id}, {
+                await merch.updateOne({_id: merchItem!._id}, {
                   $inc: { quantity: -1 * item.quantity }
                 });
               }
@@ -487,7 +493,7 @@ router.route('/')
               firstName: customer.givenName,
               lastName: customer.familyName,
             } : {},
-            totalCost: Number.parseInt(payment.totalMoney.amount.toString())/100,
+            totalCost: Number.parseInt(payment.totalMoney!.amount!.toString())/100,
             shippingRate: shippingRate,
             orderId: order.id,
           };
@@ -495,7 +501,7 @@ router.route('/')
           logger.info(`Sending order response: ${printJSON(response)}`);
           return response;
         }
-      } catch (e) {
+      } catch (e: any) {
         if (e.errors) {
           if (orderId) {
             logger.error(`Error in creating payment for order ${orderId} with email ${email}.`);
@@ -512,7 +518,7 @@ router.route('/')
 
             ordersApi.updateOrder(orderId, {
               order: {
-                locationId: process.env.SQUARE_LOC_ID,
+                locationId: process.env.SQUARE_LOC_ID as string,
                 state: 'CANCELED',
                 version: orderVersion
               }
@@ -622,8 +628,8 @@ router.route('/')
             postalCode: shippingPostalCode
           }
         })
-        .then(customerFulfilled => customerFulfilled.result.customer)
-        .then(customer => {
+        .then(customerFulfilled => customerFulfilled.result.customer!)
+        .then((customer: Customer) => {
           logger.info(`Customer created in Square: ${printJSON(customer)}`);
           cardsApi.createCard({
             sourceId: token,
@@ -643,7 +649,7 @@ router.route('/')
               cardholderName: cardholderName,
               customerId: customer.id,
             }
-          }).then(cardFulfilled => cardFulfilled.result.card).then(card => {
+          }).then(cardFulfilled => cardFulfilled.result.card!).then((card: Card) => {
             logger.info(`Customer card created: ${printJSON(card)}`);
 
             placeOrder(customer, card ? card.id : token, req.body)
@@ -652,16 +658,16 @@ router.route('/')
                 logger.info(`Sending order response: ${printJSON(orderInfo)}`);
                 res.status(201).json(orderInfo);
 
-                logger.info(`Emailing confirmation to customer for order ${orderInfo.orderId} to email ${customer.emailAddress}`);
+                logger.info(`Emailing confirmation to customer for order ${orderInfo!.orderId} to email ${customer.emailAddress}`);
                 axios.post('https://api.emailjs.com/api/v1.0/email/send', {
                   service_id: process.env.EMAILJS_SERVICE,
                   template_id: process.env.EMAILJS_ORDER_TEMPLATE,
                   user_id: process.env.EMAILJS_ID,
                   accessToken: process.env.EMAILJS_TOKEN,
                   template_params: {
-                    first_name: orderInfo.customer.firstName,
-                    order: orderInfo.orderId,
-                    email: orderInfo.customer.email
+                    first_name: orderInfo!.customer.firstName,
+                    order: orderInfo!.orderId,
+                    email: orderInfo!.customer.email
                   }
                 }, {
                   headers: {
@@ -734,7 +740,7 @@ router.route('/')
 
           placeOrder(customer, card ? card.id : token, req.body)
             .then(orderInfo => {
-              logger.info(`Emailing confirmation to customer for order ${orderInfo.orderId} to email ${customer.emailAddress}`);
+              logger.info(`Emailing confirmation to customer for order ${orderInfo!.orderId} to email ${customer.emailAddress}`);
               res.status(201).json(orderInfo);
 
               axios.post('https://api.emailjs.com/api/v1.0/email/send', {
@@ -743,9 +749,9 @@ router.route('/')
                 user_id: process.env.EMAILJS_ID,
                 accessToken: process.env.EMAILJS_TOKEN,
                 template_params: {
-                  first_name: orderInfo.customer.firstName,
-                  order: orderInfo.orderId,
-                  email: orderInfo.customer.email
+                  first_name: orderInfo!.customer.firstName,
+                  order: orderInfo!.orderId,
+                  email: orderInfo!.customer.email
                 }
               }, {
                 headers: {
@@ -795,8 +801,8 @@ router.route('/')
 
     ordersApi.searchOrders({
       returnEntries: false,
-      locationIds: [process.env.SQUARE_LOC_ID]
-    }).then(ordersFulfilled => ordersFulfilled.result.orders).then(orders => {
+      locationIds: [process.env.SQUARE_LOC_ID as string]
+    }).then(ordersFulfilled => ordersFulfilled.result.orders!).then((orders: Order[]) => {
       if(!orders) {
         logger.warn('No orders found.');
         res.status(404).json({
@@ -811,17 +817,17 @@ router.route('/')
 
           let items = [];
           let shippingCost = 0;
-          for(let item of order.lineItems) {
+          for(let item of order.lineItems!) {
             if(item.uid !== 'shipping') {
               items.push({
                 id: item.uid,
                 name: item.name,
                 quantity: item.quantity,
-                itemPrice: Number.parseFloat(item.basePriceMoney.amount.toString()) / 100,
-                totalPrice: Number.parseFloat(item.totalMoney.amount.toString()) / 100
+                itemPrice: Number.parseFloat(item.basePriceMoney!.amount!.toString()) / 100,
+                totalPrice: Number.parseFloat(item.totalMoney!.amount!.toString()) / 100
               });
             } else {
-              shippingCost = Number.parseFloat(item.totalMoney.amount.toString()) / 100;
+              shippingCost = Number.parseFloat(item.totalMoney!.amount!.toString()) / 100;
             }
           }
 
@@ -837,7 +843,7 @@ router.route('/')
             customerId: order.customerId,
             items: items,
             shippingCost: shippingCost,
-            orderCost: Number.parseFloat(order.totalMoney.amount.toString()) / 100,
+            orderCost: Number.parseFloat(order.totalMoney!.amount!.toString()) / 100,
             paymentIds: payments,
             orderStatus: order.state,
             shippingAddress: order.metadata && order.metadata.shippingLine1 ? {
@@ -850,7 +856,7 @@ router.route('/')
             } : undefined,
             shippingLabelId: order.metadata && order.metadata.shippingLabelId ? order.metadata.shippingLabelId : undefined,
             shippingLabelUrl: order.metadata && order.metadata.shippingLabelUrl ? order.metadata.shippingLabelUrl : undefined,
-            createdDate: new Date(order.createdAt)
+            createdDate: new Date(order.createdAt as string)
           });
         }
 
@@ -894,7 +900,7 @@ router.route('/complete')
     const { ordersApi, customersApi } = square;
 
     ordersApi.searchOrders({
-      locationIds: [process.env.SQUARE_LOC_ID],
+      locationIds: [process.env.SQUARE_LOC_ID as string],
       returnEntries: false,
       query: {
         filter: {
@@ -903,12 +909,12 @@ router.route('/complete')
           }
         }
       }
-    }).then(ordersFulfilled => ordersFulfilled.result.orders.filter(order => order.tenders)).then(orders => {
+    }).then(ordersFulfilled => ordersFulfilled.result.orders!.filter(order => order.tenders)).then((orders: Order[]) => {
       logger.info(`${orders.length} open orders. Completing payments and creating shipping labels.`);
       const completeOrders = async () => {
         let completedOrders = [];
         for(let order of orders) {
-          let completedOrder
+          let completedOrder: any = {};
           try {
             completedOrder = await completeOrder(order);
             completedOrders.push(completedOrder);
@@ -916,8 +922,8 @@ router.route('/complete')
             throw orderCompletionError;
           }
 
-          customersApi.retrieveCustomer(order.customerId)
-            .then(customerFulfilled => customerFulfilled.result.customer).then(customer => {
+          customersApi.retrieveCustomer(order.customerId!)
+            .then(customerFulfilled => customerFulfilled.result.customer!).then((customer: Customer) => {
               logger.info(`Emailing customer for order ${order.id} to email ${customer.emailAddress}`);
               axios.post('https://api.emailjs.com/api/v1.0/email/send', {
                 service_id: process.env.EMAILJS_SERVICE,
@@ -926,8 +932,8 @@ router.route('/complete')
                 accessToken: process.env.EMAILJS_TOKEN,
                 template_params: {
                   first_name: customer.givenName,
-                  receipt: completedOrder.receiptUrl,
-                  tracking_number: completedOrder.shippingLabelInfo.trackingNumber,
+                  receipt: completedOrder!.receiptUrl,
+                  tracking_number: completedOrder!.shippingLabelInfo.trackingNumber,
                   order: order.id,
                   email: customer.emailAddress
                 }
@@ -1067,7 +1073,7 @@ router.route('/:orderId/cancel')
     const { ordersApi, customersApi } = square;
 
     ordersApi.retrieveOrder(orderId)
-      .then(orderFound => orderFound.result.order).then(order => {
+      .then(orderFound => orderFound.result.order!).then((order: Order) => {
         if(!order) {
           logger.error(`Order ${orderId} not found`);
           const exception = {
@@ -1101,10 +1107,10 @@ router.route('/:orderId/cancel')
           } else {
             logger.info(`Canceling order ${orderId}...`);
 
-            ordersApi.updateOrder(order.id, {
+            ordersApi.updateOrder(order.id!, {
               order: {
                 version: order.version,
-                locationId: process.env.SQUARE_LOC_ID,
+                locationId: process.env.SQUARE_LOC_ID as string,
                 state: 'CANCELED'
               }
             }).then(canceledResult => canceledResult.result.order).then(canceledOrder => {
@@ -1200,15 +1206,15 @@ router.route('/:orderId/complete')
     const { orderId } = req.params;
 
     ordersApi.retrieveOrder(req.params.orderId)
-      .then(orderFulfilled => orderFulfilled.result.order).then(order => {
+      .then(orderFulfilled => orderFulfilled.result.order!).then((order: Order) => {
         completeOrder(order).then(completedOrder => {
           logger.info(`Completed order ${completedOrder.id}`);
           logger.info(printJSON(completedOrder));
 
           res.json(JSON.parse(printJSON(completedOrder)));
 
-          customersApi.retrieveCustomer(order.customerId)
-            .then(customerFulfilled => customerFulfilled.result.customer).then(customer => {
+          customersApi.retrieveCustomer(order.customerId!)
+            .then(customerFulfilled => customerFulfilled.result.customer!).then((customer: Customer) => {
               logger.info(`Emailing customer for order ${order.id} to email ${customer.emailAddress}`);
               axios.post('https://api.emailjs.com/api/v1.0/email/send', {
                 service_id: process.env.EMAILJS_SERVICE,
@@ -1404,7 +1410,7 @@ router.route('/rates/estimate')
         });
       }
       else {
-        res.status(400).json(JSON.parse(rateFulfilled.body));
+        res.status(400).json(JSON.parse(rateFulfilled.data));
       }
 
     }).catch((ratesError) => {

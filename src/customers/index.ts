@@ -1,11 +1,9 @@
+import express, { Request, Response, NextFunction } from 'express';
+import axios from 'axios';
+import { client } from '../config/square';
+const { default: logger } = require('../config/logger');
+
 require('dotenv').config();
-
-const express = require("express");
-const axios = require('axios');
-
-const logger = require('../config/logger');
-const square = require('../config/square').client;
-
 const router = express.Router();
 const printJSON = require('../utils/helpers').printJSON;
 
@@ -21,17 +19,17 @@ const {
  */
 
 router.route('/:customerId')
-  .get((req, res, next) => {
-    const customerId = req.params.customerId;
+  .get((req: Request, res: Response, next: NextFunction) => {
+    const customerId: string = req.params.customerId;
     
     if (customerId === 'email') {
       next();
     } else {
-      const { customersApi } = square;
+      const { customersApi } = client;
       logger.info(`Getting customer ${customerId}`);
 
       customersApi.retrieveCustomer(customerId)
-        .then(customerFulfilled => customerFulfilled.result.customer).then(customer => {
+        .then(customerFulfilled => customerFulfilled.result.customer!).then(customer => {
           logger.info(`Customer ${customerId} with email ${customer.emailAddress} retrieved`)
           const customerRetVal = {
             id: customer.id,
@@ -56,12 +54,12 @@ router.route('/:customerId')
   });
 
 router.route('/:customerId/orders')
-  .get((req, res) => {
-    const { ordersApi } = square
+  .get((req: Request, res: Response) => {
+    const { ordersApi } = client
     const customerId = req.params.customerId
 
     ordersApi.searchOrders({
-      locationIds: [process.env.SQUARE_LOC_ID],
+      locationIds: [process.env.SQUARE_LOC_ID as string],
       returnEntries: false,
       query: {
         filter: {
@@ -70,35 +68,35 @@ router.route('/:customerId/orders')
           }
         }
       }
-    }).then(ordersFulfilled => ordersFulfilled.result.orders).then(orders => {
+    }).then(ordersFulfilled => ordersFulfilled.result.orders!).then(orders => {
       let response = []
       for(let order of orders) {
         let cart = []
-        for(let item of order.lineItems) {
+        for(let item of order.lineItems!) {
           if (item.uid !== 'shipping') {
             cart.push({
               uid: item.uid,
-              id: item.metadata.id,
+              id: item.metadata!.id,
               name: item.name,
               quantity: Number.parseInt(item.quantity),
-              price: Number.parseInt(item.totalMoney.amount) / 100
+              price: Number.parseInt(item.totalMoney!.amount!.toString()) / 100
             })
           }
         }
-        const shipping = Number.parseInt(order.lineItems.find(item => item.uid === 'shipping').totalMoney.amount) / 100
-        const totalCost = Number.parseInt(order.totalMoney.amount) / 100
+        const shipping = Number.parseInt(order.lineItems!.find(item => item.uid === 'shipping')!.totalMoney!.amount!.toString()) / 100
+        const totalCost = Number.parseInt(order.totalMoney!.amount!.toString()) / 100
         
         let payments = []
-        for(let payment of order.tenders) {
+        for(let payment of order.tenders!) {
           payments.push({
             id: payment.id,
-            amount: Number.parseInt(payment.amountMoney.amount) / 100,
+            amount: Number.parseInt(payment.amountMoney!.amount!.toString()) / 100,
             cardDetails: payment.type === 'CARD'
               ? {
-                brand: payment.cardDetails.card.cardBrand,
-                last4: payment.cardDetails.card.last4,
-                expMonth: payment.cardDetails.card.expMonth,
-                expYear: payment.cardDetails.card.expYear
+                brand: payment.cardDetails!.card!.cardBrand,
+                last4: payment.cardDetails!.card!.last4,
+                expMonth: payment.cardDetails!.card!.expMonth,
+                expYear: payment.cardDetails!.card!.expYear
               } : undefined
           })
         }
@@ -111,12 +109,12 @@ router.route('/:customerId/orders')
           createdDate: order.createdAt,
           state: order.state,
           shippingAddress: {
-            line1: order.metadata.shippingLine1,
-            line2: order.metadata.shippingLine2,
-            line3: order.metadata.shippingLine3,
-            city: order.metadata.shippingCity,
-            state: order.metadata.shippingState,
-            postalCode: order.metadata.shippingPostalCode
+            line1: order.metadata!.shippingLine1,
+            line2: order.metadata!.shippingLine2,
+            line3: order.metadata!.shippingLine3,
+            city: order.metadata!.shippingCity,
+            state: order.metadata!.shippingState,
+            postalCode: order.metadata!.shippingPostalCode
           },
           payments: payments
         })
@@ -127,8 +125,8 @@ router.route('/:customerId/orders')
   });
 
 router.route('/email')
-  .post((req, res) => {
-    const { customersApi } = square
+  .post((req:Request, res: Response) => {
+    const { customersApi } = client
     const { email } = req.body
 
     customersApi.searchCustomers({
@@ -139,7 +137,7 @@ router.route('/email')
           }
         }
       }
-    }).then(customerFulfilled => customerFulfilled.result.customers).then(customers => {
+    }).then(customerFulfilled => customerFulfilled.result.customers!).then(customers => {
       const customer = customers[0]
       
       let code = ""

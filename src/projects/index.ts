@@ -1,7 +1,8 @@
-const express = require("express");
-const logger = require('../config/logger');
-const db = require('../db/setup').getDb();
+import express, { Request, Response } from 'express';
+import { getDb } from '../db/setup';
+const { default: logger } = require('../config/logger');
 
+const db = getDb();
 const router = express.Router();
 const projects = db.collection('projects');
 
@@ -10,7 +11,7 @@ const projects = db.collection('projects');
  * - POST / (create a project)
  */
 router.route('/')
-  .get((req, res) => {
+  .get((req: Request, res: Response) => {
     /**
      * TODO:
      * - Add sorting by name and date

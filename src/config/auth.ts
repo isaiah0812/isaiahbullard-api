@@ -1,11 +1,11 @@
-const { auth, requiredScopes } = require('express-oauth2-jwt-bearer');
+import { auth, requiredScopes } from 'express-oauth2-jwt-bearer';
 
-const checkJwt = auth({
+export const checkJwt = auth({
   audience: 'https://zaepi/api',
   issuerBaseURL: `https://zaemadethis-dev.us.auth0.com`,
 });
 
-const scopes = {
+export const scopes = {
   readOrders: requiredScopes('read:orders'),
   cancelOrders: requiredScopes('delete:orders'),
   createOrders: requiredScopes('write:orders'),
@@ -14,5 +14,3 @@ const scopes = {
   readLabels: requiredScopes('read:labels'),
   readEstimate: requiredScopes('read:rate-estimate'),
 }
-
-module.exports = { checkJwt, scopes }

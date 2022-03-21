@@ -1,7 +1,8 @@
-const express = require("express");
-const logger = require('../config/logger');
-const db = require('../db/setup').getDb();
+import express, { Request, Response } from 'express';
+import { getDb } from '../db/setup';
+const { default: logger } = require('../config/logger');
 
+const db = getDb();
 const router = express.Router();
 const videos = db.collection('videos');
 
@@ -10,7 +11,7 @@ const videos = db.collection('videos');
  * - POST / (create a video)
  */
 router.route('/')
-  .get((req, res) => {
+  .get((req: Request, res: Response) => {
     logger.info(`Getting all videos for request from ${req.ip}`);
     videos.find().toArray((error, result) => {
       if(error) throw error

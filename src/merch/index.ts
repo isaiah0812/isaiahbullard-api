@@ -1,7 +1,8 @@
-const express = require("express");
-const logger = require('../config/logger');
-const db = require('../db/setup').getDb();
+import express, { Request, Response } from 'express';
+import { getDb } from '../db/setup';
 
+const { default: logger } = require('../config/logger');
+const db = getDb();
 const router = express.Router();
 const merch = db.collection('merch');
 
@@ -10,7 +11,7 @@ const merch = db.collection('merch');
  * - POST / (create new merch)
  */
 router.route('/')
-  .get((req, res) => {
+  .get((req: Request, res: Response) => {
     // TODO: Add filtering and sorting
     logger.info(`Getting all merch for request from ${req.ip}`);
     merch.find().toArray((error, result) => {

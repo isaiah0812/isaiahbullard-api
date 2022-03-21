@@ -1,8 +1,6 @@
-const printJSON = (jsonObject) => {
+export const printJSON = (jsonObject: any) => {
   return JSON.stringify(jsonObject, (key, value) => 
     typeof value === 'bigint'
-      ? Number.parseInt(value)
+      ? Number.parseInt(value.toString())
       : value, 2)
 }
-
-module.exports = { printJSON };
