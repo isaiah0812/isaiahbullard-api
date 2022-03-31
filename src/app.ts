@@ -4,6 +4,7 @@
  * - Make all unsafe requests require OAuth.
  * - USE HYPERMEDIA
  * - Convert to TypeScript.
+ * - Change URL types in DB to be absolute URLs
  */
 
 import express, { NextFunction, Request, Response } from 'express';
