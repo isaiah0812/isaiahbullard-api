@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { Document } from 'mongodb';
+import { Document, WithoutId } from 'mongodb';
 import { checkJwt } from '../config/auth';
 import { getDb } from '../db/setup';
 import { CreateError, InternalServerError, ValidationError } from '../models/errorHandling';
@@ -18,8 +18,12 @@ router.route('/')
   .get((req: Request, res: Response) => {
     // TODO: Add filtering and sorting
     logger.info(`Getting all merch for request from ${req.ip}`);
-    merch.find().toArray((error, result) => {
-      if(error) throw error
+    merch.find({}, { projection: { "_id": false }}).toArray((error: any, result: WithoutId<Document>[] | undefined) => {
+      if(error) {
+        logger.error("Error retrieving merch from db...");
+        res.status(500).json(new InternalServerError(error));
+        throw error
+      }
 
       res.json(result)
     })
