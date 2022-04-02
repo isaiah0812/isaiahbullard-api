@@ -56,7 +56,11 @@ router.route('/')
  * TODO:
  * - GET /:merchId (get merch item)
  * - PUT /:merchId (update merch item)
- * - DELETE /: merchId (delete merch item)
+ * - DELETE /:merchId (delete merch item)
+ * - POST /:merchId/sizes (create a size)
+ * - GET /:merchId/sizes/:sizeId (get a size)
+ * - PUT /:merchId/sizes/:sizeId (update a size)
+ * - DELETE /:merchId/sizes/:sizeId (delete a size)
  */
 
 module.exports = router;
