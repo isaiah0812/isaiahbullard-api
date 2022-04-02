@@ -35,5 +35,8 @@ export const ID_FIELD_NAME = "id";
 export const ID_FIELD_ERROR_MESSAGE = "Field must be a string matching ^[a-z0-9-]*$";
 
 export const COVER_FIELD_NAME = "cover";
+export const DATE_FIELD_ERROR_MESSAGE = "Field must be a valid date."
+
+export const RELEASE_DATE_FIELD_NAME = "releaseDate";
 
 export const URL_FIELD_ERROR_MESSAGE = "Field must be a valid URL string";
