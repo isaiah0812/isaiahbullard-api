@@ -17,7 +17,7 @@ const videos = db.collection('videos');
 router.route('/')
   .get((req: Request, res: Response) => {
     logger.info(`Getting all videos for request from ${req.ip}`);
-    videos.find({}, { projection: { "_id": false }}).toArray((error: any, result: WithoutId<Document> | undefined) => {
+    videos.find({}, { projection: { "_id": false }}).toArray((error: any, result?: WithoutId<Document>) => {
       if(error) {
         logger.error("Error retrieving videos from db...");
         res.status(500).json(new InternalServerError(error));

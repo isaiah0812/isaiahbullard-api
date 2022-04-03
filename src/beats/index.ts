@@ -17,11 +17,11 @@ const beats = db.collection('beats');
 router.route('/')
   .get((req: Request, res: Response) => {
     logger.info(`Getting all beats for request from ${req.ip}`);
-    beats.find({}, { projection: { "_id": false }}).toArray((error: any, result: WithoutId<Document>[] | undefined) => {
+    beats.find({}, { projection: { "_id": false }}).toArray((error: any, result?: WithoutId<Document>[]) => {
       if(error) {
         logger.error("Error retrieving beats from db...");
         res.status(500).json(new InternalServerError(error));
-        throw error
+        throw error;
       }
 
       res.json(result)

@@ -18,7 +18,7 @@ router.route('/')
   .get((req: Request, res: Response) => {
     // TODO: Add filtering and sorting
     logger.info(`Getting all merch for request from ${req.ip}`);
-    merch.find({}, { projection: { "_id": false }}).toArray((error: any, result: WithoutId<Document>[] | undefined) => {
+    merch.find({}, { projection: { "_id": false }}).toArray((error: any, result?: WithoutId<Document>[]) => {
       if(error) {
         logger.error("Error retrieving merch from db...");
         res.status(500).json(new InternalServerError(error));

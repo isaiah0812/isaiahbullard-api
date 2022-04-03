@@ -17,7 +17,7 @@ const singles = db.collection('singles');
 router.route('/')
   .get((req: Request, res: Response) => {
     logger.info(`Getting all singles for request from ${req.ip}`);
-    singles.find({}, { projection: { "_id": false }}).toArray((error: any, result: WithoutId<Document>[] | undefined) => {
+    singles.find({}, { projection: { "_id": false }}).toArray((error: any, result?: WithoutId<Document>[]) => {
       if(error) {
         logger.error("Error retrieving singles from db...");
         res.status(500).json(new InternalServerError(error))

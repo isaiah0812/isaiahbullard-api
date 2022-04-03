@@ -13,7 +13,7 @@ const credits = db.collection('credits');
 router.route('/')
   .get((req: Request, res: Response) => {
     logger.info(`Getting all credits for request from ${req.ip}`);
-    credits.find({}, { projection: { "_id": false }}).toArray((error: any, result: WithoutId<Document>[] | undefined) => {
+    credits.find({}, { projection: { "_id": false }}).toArray((error: any, result?: WithoutId<Document>[]) => {
       if(error) {
         logger.error("Error retrieving credits from db...");
         res.status(500).send("Error retrieving credits, error object coming soon");
