@@ -173,6 +173,7 @@ export class Project implements ZaetabaseDocument {
   description: URL | string;
   bandcamp: string;
   soundCloud: string;
+  beatTape: boolean = false;
 
   constructor(project: ProjectType) {
     try {
@@ -251,6 +252,7 @@ export class Album extends Project {
     this.spotify = album.spotify;
     this.apple = album.apple;
     this.songLink = album.songLink;
+    this.beatTape = false;
   }
 }
 
@@ -284,5 +286,6 @@ export class BeatTape extends Project {
     
     this.albumCredits = beatTape.albumCredits;
     this.youTube = beatTape.youTube;
+    this.beatTape = true;
   }
 }
