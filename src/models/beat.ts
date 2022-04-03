@@ -23,11 +23,6 @@ export default class Beat implements ZaetabaseDocument {
   sold: boolean;
 
   constructor(beat: BeatType) {
-    this.title = beat.title;
-    this.youtube = beat.youtube;
-    this.tempo = beat.tempo;
-    this.sold = beat.sold || false;
-
     if (Object.values(KeySignatures).includes(beat.keySignature)) {
       this.keySignature = beat.keySignature;
     } else {
@@ -45,6 +40,11 @@ export default class Beat implements ZaetabaseDocument {
         }
       }
     }
+
+    this.title = beat.title;
+    this.youtube = beat.youtube;
+    this.tempo = beat.tempo;
+    this.sold = beat.sold || false;
 
     if (beat.id) {
       if (beat.id.match(ID_REGEX)) {

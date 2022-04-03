@@ -16,10 +16,6 @@ export default class Credit implements ZaetabaseDocument {
   link: URL;
 
   constructor(credit: CreditType) {
-    this.title = credit.title;
-    this.artist = credit.artist;
-    this.link = credit.link;
-
     try {
       this.link = new URL(credit.link);
     } catch (e: any) {
@@ -29,6 +25,10 @@ export default class Credit implements ZaetabaseDocument {
         throw e;
       }
     }
+    
+    this.title = credit.title;
+    this.artist = credit.artist;
+    this.link = credit.link;
 
     if (credit.id) {
       if (credit.id.match(ID_REGEX)) {

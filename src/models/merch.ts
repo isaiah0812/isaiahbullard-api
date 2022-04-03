@@ -23,12 +23,6 @@ export class Size implements ZaetabaseDocument {
   price: number;
 
   constructor(size: SizeType) {
-    this.name = size.name;
-    this.quantity = size.quantity;
-    this.pics = size.pics;
-    this.weight = size.weight;
-    this.price = size.price;
-
     if(size.pics) {
       try {
         this.pics = typeof size.pics === 'string' ? [size.pics] : size.pics;
@@ -40,6 +34,12 @@ export class Size implements ZaetabaseDocument {
         }
       }
     }
+
+    this.name = size.name;
+    this.quantity = size.quantity;
+    this.pics = size.pics;
+    this.weight = size.weight;
+    this.price = size.price;
 
     if (size.id) {
       if(size.id.match(ID_REGEX)) {
@@ -84,12 +84,6 @@ export default class Merch implements ZaetabaseDocument {
   quantity?: number;
 
   constructor(merch: MerchType) {
-    this.name = merch.name;
-    this.description = merch.description;
-    this.price = merch.price;
-    this.weight = merch.weight;
-    this.quantity = merch.quantity;
-
     if(merch.pics) {
       try {
         this.pics = typeof merch.pics === 'string' ? [merch.pics] : merch.pics;
@@ -125,6 +119,12 @@ export default class Merch implements ZaetabaseDocument {
         throw e;
       }
     }
+
+    this.name = merch.name;
+    this.description = merch.description;
+    this.price = merch.price;
+    this.weight = merch.weight;
+    this.quantity = merch.quantity;
 
     if(merch.id) {
       if (merch.id.match(ID_REGEX)) {

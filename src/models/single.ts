@@ -32,15 +32,6 @@ export class Single implements ZaetabaseDocument {
   songLink: string;
 
   constructor(single: SingleType) {
-    this.title = single.title;
-    this.description = single.description;
-    this.color = single.color;
-    this.spotify = single.spotify;
-    this.apple = single.apple;
-    this.bandcamp = single.bandcamp;
-    this.soundcloud = single.soundcloud;
-    this.songLink = single.songLink;
-
     if (typeof single.features === 'string') {
       this.features = [single.features]
     } else {
@@ -65,6 +56,15 @@ export class Single implements ZaetabaseDocument {
     } else {
       throw new ValidationError(RELEASE_DATE_FIELD_NAME, DATE_FIELD_ERROR_MESSAGE);
     }
+
+    this.title = single.title;
+    this.description = single.description;
+    this.color = single.color;
+    this.spotify = single.spotify;
+    this.apple = single.apple;
+    this.bandcamp = single.bandcamp;
+    this.soundcloud = single.soundcloud;
+    this.songLink = single.songLink;
 
     if (single.id) {
       if (single.id.match(ID_REGEX)) {
