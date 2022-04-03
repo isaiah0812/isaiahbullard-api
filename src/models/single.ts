@@ -35,12 +35,17 @@ export class Single implements ZaetabaseDocument {
     this.title = single.title;
     this.description = single.description;
     this.color = single.color;
-    this.features = single.features;
     this.spotify = single.spotify;
     this.apple = single.apple;
     this.bandcamp = single.bandcamp;
     this.soundcloud = single.soundcloud;
     this.songLink = single.songLink;
+
+    if (typeof single.features === 'string') {
+      this.features = [single.features]
+    } else {
+      this.features = single.features;
+    }
 
     try {
       this.cover = new URL(single.cover);

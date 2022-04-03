@@ -31,7 +31,7 @@ export class Size implements ZaetabaseDocument {
 
     if(size.pics) {
       try {
-        this.pics = size.pics
+        this.pics = typeof size.pics === 'string' ? [size.pics] : size.pics;
       } catch(e: any) {
         if (e instanceof TypeError) {
           throw new ValidationError(PICS_FIELD_NAME, PICS_FIELD_ERROR_MESSAGE);
@@ -78,7 +78,7 @@ export default class Merch implements ZaetabaseDocument {
   description: string;
   thumbnail: URL;
   pics?: URL[];
-  sizes?: Size[];
+  sizes: Size[];
   price?: number;
   weight?: number;
   quantity?: number;
@@ -86,14 +86,13 @@ export default class Merch implements ZaetabaseDocument {
   constructor(merch: MerchType) {
     this.name = merch.name;
     this.description = merch.description;
-    this.sizes = merch.sizes;
     this.price = merch.price;
     this.weight = merch.weight;
     this.quantity = merch.quantity;
 
     if(merch.pics) {
       try {
-        this.pics = merch.pics;
+        this.pics = typeof merch.pics === 'string' ? [merch.pics] : merch.pics;
       } catch(e: any) {
         if (e instanceof TypeError) {
           throw new ValidationError(PICS_FIELD_NAME, PICS_FIELD_ERROR_MESSAGE);
@@ -113,6 +112,8 @@ export default class Merch implements ZaetabaseDocument {
           throw e;
         }
       }
+    } else {
+      this.sizes = []
     }
 
     try {
