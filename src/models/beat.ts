@@ -6,7 +6,7 @@ import { COVER_FIELD_NAME, ID_FIELD_ERROR_MESSAGE, ID_FIELD_NAME, URL_FIELD_ERRO
 type BeatType = {
   id?: string;
   title: string;
-  cover: URL;
+  cover?: URL;
   youtube: string;
   keySignature: KeySignatures;
   tempo: number;
@@ -16,7 +16,7 @@ type BeatType = {
 export default class Beat implements ZaetabaseDocument {
   id: string;
   title: string;
-  cover: URL;
+  cover?: URL;
   youtube: string;
   keySignature: KeySignatures;
   tempo: number;
@@ -33,14 +33,16 @@ export default class Beat implements ZaetabaseDocument {
     } else {
       throw new ValidationError("keySignature", "Field must be a valid KeySignature");
     }
-    
-    try {
-      this.cover = new URL(beat.cover);
-    } catch (e: any) {
-      if (e instanceof TypeError) {
-        throw new ValidationError(COVER_FIELD_NAME, URL_FIELD_ERROR_MESSAGE);
-      } else {
-        throw e;
+
+    if (beat.cover) {
+      try {
+        this.cover = new URL(beat.cover);
+      } catch (e: any) {
+        if (e instanceof TypeError) {
+          throw new ValidationError(COVER_FIELD_NAME, URL_FIELD_ERROR_MESSAGE);
+        } else {
+          throw e;
+        }
       }
     }
 
