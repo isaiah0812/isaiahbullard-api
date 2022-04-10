@@ -1,7 +1,18 @@
 import { ZaetabaseDocument } from ".";
-import { ID_REGEX, NON_ID_CHARACTER_REGEX } from "../utils/helpers";
+import { ID_REGEX, isInvalidNonEmptyString, NON_ID_CHARACTER_REGEX } from "../utils/helpers";
 import Beat from "./beat";
-import { COVER_FIELD_NAME, DATE_FIELD_ERROR_MESSAGE, ID_FIELD_ERROR_MESSAGE, ID_FIELD_NAME, RELEASE_DATE_FIELD_NAME, URL_FIELD_ERROR_MESSAGE, ValidationError } from "./errorHandling";
+import { 
+  ARRAY_REQUIRED_MESSAGE,
+  COVER_FIELD_NAME,
+  DATE_FIELD_ERROR_MESSAGE,
+  ID_FIELD_ERROR_MESSAGE,
+  ID_FIELD_NAME,
+  RELEASE_DATE_FIELD_NAME,
+  STRING_NOT_EMPTY_MESSAGE,
+  TITLE_FIELD_NAME,
+  URL_FIELD_ERROR_MESSAGE,
+  ValidationError
+} from "./errorHandling";
 
 type PersonType = {
   name: string;
@@ -15,8 +26,12 @@ export class Person {
   instagram?: boolean;
 
   constructor(person: PersonType) {
+    if(isInvalidNonEmptyString(person.name)) {
+      throw new ValidationError("name", STRING_NOT_EMPTY_MESSAGE);
+    }
+
     if(person.username !== undefined && person.instagram === undefined) {
-      throw new ValidationError("instagram", "Field must be included when passing the 'username' field")
+      throw new ValidationError("instagram", "Field must be included when passing the 'username' field");
     }
     
     this.name = person.name;
@@ -26,13 +41,12 @@ export class Person {
 }
 
 type ProjectCreditType = {
-  albumId: string;
-  features: Person[];
-  producedBy: Person[];
-  mixedBy: Person[];
-  masteredBy: Person[];
-  artworkBy: Person[];
-  specialThanks?: Person[];
+  features: PersonType[];
+  producedBy: PersonType[];
+  mixedBy: PersonType[];
+  masteredBy: PersonType[];
+  artworkBy: PersonType[];
+  specialThanks?: PersonType[];
 }
 
 type AlbumCreditType = ProjectCreditType & {
@@ -44,7 +58,6 @@ type BeatTapeCreditType = ProjectCreditType & {
 }
 
 export class ProjectCredit {
-  albumId: string;
   features: Person[];
   producedBy: Person[];
   mixedBy: Person[];
@@ -54,50 +67,84 @@ export class ProjectCredit {
 
   constructor(projectCredit: ProjectCreditType) {
     try {
-      this.features = projectCredit.features;
+      this.features = [];
+
+      for(const feature of projectCredit.features) {
+        this.features.push(new Person(feature));
+      }
     } catch(e: any) {
       if (e instanceof ValidationError) {
-        throw new ValidationError(`features.${e.field}`, e.message);
+        if(e.field !== "features") {
+          throw new ValidationError(`features.${e.field}`, e.message);
+        }
+
+        throw e;
+      } else if (e instanceof TypeError) {
+        throw new ValidationError("features", ARRAY_REQUIRED_MESSAGE);
       } else {
         throw e;
       }
     }
 
     try {
-      this.producedBy = projectCredit.producedBy;
+      this.producedBy = [];
+      
+      for (const producer of projectCredit.producedBy) {
+        this.producedBy.push(new Person(producer));
+      }
     } catch(e: any) {
       if (e instanceof ValidationError) {
         throw new ValidationError(`producedBy.${e.field}`, e.message);
+      } else if (e instanceof TypeError) {
+        throw new ValidationError("producedBy", ARRAY_REQUIRED_MESSAGE);
       } else {
         throw e;
       }
     }
 
     try {
-      this.mixedBy = projectCredit.mixedBy;
+      this.mixedBy = [];
+
+      for (const mixer of projectCredit.mixedBy) {
+        this.mixedBy.push(new Person(mixer));
+      }
     } catch(e: any) {
       if (e instanceof ValidationError) {
         throw new ValidationError(`mixedBy.${e.field}`, e.message);
+      } else if (e instanceof TypeError) {
+        throw new ValidationError("mixedBy", ARRAY_REQUIRED_MESSAGE);
       } else {
         throw e;
       }
     }
 
     try {
-      this.masteredBy = projectCredit.masteredBy;
+      this.masteredBy = [];
+
+      for (const engineer of projectCredit.masteredBy) {
+        this.mixedBy.push(new Person(engineer));
+      }
     } catch(e: any) {
       if (e instanceof ValidationError) {
         throw new ValidationError(`masteredBy.${e.field}`, e.message);
+      } else if (e instanceof TypeError) {
+        throw new ValidationError("masteredBy", ARRAY_REQUIRED_MESSAGE);
       } else {
         throw e;
       }
     }
 
     try {
-      this.artworkBy = projectCredit.artworkBy;
+      this.artworkBy = [];
+
+      for (const artist of projectCredit.artworkBy) {
+        this.artworkBy.push(new Person(artist));
+      }
     } catch(e: any) {
       if (e instanceof ValidationError) {
         throw new ValidationError(`artworkBy.${e.field}`, e.message);
+      } else if (e instanceof TypeError) {
+        throw new ValidationError("artworkBy", ARRAY_REQUIRED_MESSAGE);
       } else {
         throw e;
       }
@@ -105,17 +152,21 @@ export class ProjectCredit {
 
     if (projectCredit.specialThanks) {
       try {
-        this.specialThanks = projectCredit.specialThanks;
+        this.specialThanks = [];
+
+        for (const credit of projectCredit.specialThanks) {
+          this.specialThanks.push(new Person(credit));
+        }
       } catch(e: any) {
         if (e instanceof ValidationError) {
           throw new ValidationError(`specialThanks.${e.field}`, e.message);
+        } else if (e instanceof TypeError) {
+          throw new ValidationError("specialThanks", `When present, ${ARRAY_REQUIRED_MESSAGE}`);
         } else {
           throw e;
         }
       }
     }
-
-    this.albumId = projectCredit.albumId;
   }
 }
 
@@ -125,7 +176,19 @@ export class AlbumCredits extends ProjectCredit {
   constructor(albumCredit: AlbumCreditType) {
     super(albumCredit);
 
-    this.songwriters = albumCredit.songwriters;
+    try {
+      this.songwriters = [];
+
+      for (const writer of albumCredit.songwriters) {
+        this.songwriters.push(writer);
+      }
+    } catch(e: any) {
+      if (e instanceof TypeError) {
+        throw new ValidationError("songwriters", ARRAY_REQUIRED_MESSAGE);
+      } else {
+        throw e;
+      }
+    }
   }
 }
 
@@ -135,11 +198,25 @@ export class BeatTapeCredits extends ProjectCredit {
   constructor(beatTapeCredit: BeatTapeCreditType) {
     super(beatTapeCredit);
 
-    this.samples = beatTapeCredit.samples;
+    if (beatTapeCredit.samples) {
+      try {
+        this.samples = [];
+
+        for (const credit of beatTapeCredit.samples) {
+          this.samples.push(credit);
+        }
+      } catch(e: any) {
+        if (e instanceof TypeError) {
+          throw new ValidationError("samples", `When present, ${ARRAY_REQUIRED_MESSAGE}`);
+        } else {
+          throw e;
+        }
+      }
+    }
   }
 }
 
-type ProjectType = {
+export type ProjectType = {
   id?: string;
   title: string;
   cover: URL;
@@ -150,15 +227,15 @@ type ProjectType = {
   soundCloud: string;
 }
 
-type AlbumType = ProjectType & {
-  albumCredits: AlbumCredits;
+export type AlbumType = ProjectType & {
+  albumCredits: AlbumCreditType;
   spotify: string;
   apple: string;
   songLink: string;
 }
 
-type BeatTapeType = ProjectType & {
-  albumCredits: BeatTapeCredits;
+export type BeatTapeType = ProjectType & {
+  albumCredits: BeatTapeCreditType;
   youTube: string;
   beats: Beat[]
 }
@@ -190,25 +267,47 @@ export class Project implements ZaetabaseDocument {
     
     if (rd instanceof Date 
       && rd.toString() !== "Invalid Date") {
-        this.releaseDate = rd;
-      } else {
-        throw new ValidationError(RELEASE_DATE_FIELD_NAME, DATE_FIELD_ERROR_MESSAGE);
-      }
-      
-      try {
-        this.description = new URL(project.description);
-      } catch (e: any) {
-        if (e instanceof TypeError) {
-          this.description = project.description;
-        } else {
-          throw e;
+      this.releaseDate = rd;
+    } else {
+      throw new ValidationError(RELEASE_DATE_FIELD_NAME, DATE_FIELD_ERROR_MESSAGE);
+    }
+    
+    try {
+      this.description = new URL(project.description);
+    } catch (e: any) {
+      if (e instanceof TypeError) {
+        if (typeof project.description !== "string" || isInvalidNonEmptyString(project.title)) {
+          throw new ValidationError("description", "Field must be a valid URL string or a non-empty string.");
         }
+
+        this.description = project.description;
+      } else {
+        throw new ValidationError("description", "Field must be a valid URL string or a non-empty string.");
+      }
+    }
+    
+    if (isInvalidNonEmptyString(project.title)) {
+      throw new ValidationError(TITLE_FIELD_NAME, STRING_NOT_EMPTY_MESSAGE);
+    }
+    this.title = project.title;
+
+    this.songList = [];
+    for(const song of project.songList) {
+      if (isInvalidNonEmptyString(song)) {
+        throw new ValidationError("songList", "Items in field must be non-empty strings");
       }
       
-    this.title = project.title;
-    this.songList = project.songList;
-    this.description = project.description;
+      this.songList.push(song);
+    }
+    
+    if (isInvalidNonEmptyString(project.bandcamp)) {
+      throw new ValidationError("bandcamp", STRING_NOT_EMPTY_MESSAGE);
+    }
     this.bandcamp = project.bandcamp;
+
+    if (isInvalidNonEmptyString(project.soundCloud)) {
+      throw new ValidationError("soundCloud", STRING_NOT_EMPTY_MESSAGE);
+    }
     this.soundCloud = project.soundCloud;
 
     if (project.id) {
@@ -240,7 +339,7 @@ export class Album extends Project {
     super(album);
 
     try {
-      this.albumCredits = album.albumCredits;
+      this.albumCredits = new AlbumCredits(album.albumCredits);
     } catch(e: any) {
       if (e instanceof ValidationError) {
         throw new ValidationError(`albumCredits.${e.field}`, e.message);
@@ -249,9 +348,21 @@ export class Album extends Project {
       }
     }
 
+    if (isInvalidNonEmptyString(album.spotify)) {
+      throw new ValidationError("spotify", STRING_NOT_EMPTY_MESSAGE);
+    }
     this.spotify = album.spotify;
+
+    if (isInvalidNonEmptyString(album.apple)) {
+      throw new ValidationError("apple", STRING_NOT_EMPTY_MESSAGE);
+    }
     this.apple = album.apple;
+
+    if (isInvalidNonEmptyString(album.songLink)) {
+      throw new ValidationError("songLink", STRING_NOT_EMPTY_MESSAGE);
+    }
     this.songLink = album.songLink;
+
     this.beatTape = false;
   }
 }
@@ -265,7 +376,7 @@ export class BeatTape extends Project {
     super(beatTape);
 
     try {
-      this.albumCredits = beatTape.albumCredits;
+      this.albumCredits = new BeatTapeCredits(beatTape.albumCredits);
     } catch(e: any) {
       if (e instanceof ValidationError) {
         throw new ValidationError(`albumCredits.${e.field}`, e.message)
@@ -285,6 +396,10 @@ export class BeatTape extends Project {
     }
     
     this.albumCredits = beatTape.albumCredits;
+
+    if (isInvalidNonEmptyString(beatTape.youTube)) {
+      throw new ValidationError("youTube", STRING_NOT_EMPTY_MESSAGE);
+    }
     this.youTube = beatTape.youTube;
     this.beatTape = true;
   }
